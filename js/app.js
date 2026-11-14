@@ -256,6 +256,7 @@
     if (foot) {
       const ev = E.evaluate(state.item, currentTargets());
       foot.innerHTML = '<b>' + ev.matchedCount + '/' + ev.targetCount + '</b><span>目标</span>';
+      foot.style.setProperty('--p', Math.round(ev.progress * 100) + '%');
     }
   }
   function switchView(view) {
