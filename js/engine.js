@@ -522,6 +522,9 @@
     if (!essence) return '未知精华。';
     if (item.corrupted) return '物品已腐化，不能使用精华。';
     if (item.rarity !== 'normal' && item.rarity !== 'rare') return '精华只能用于普通或稀有物品。';
+    if (item.rarity === 'rare' && essence.canReforgeRare === false) return '该精华不能重铸稀有物品。';
+    if (item.meta && (item.meta.lockPrefix || item.meta.lockSuffix)) return '物品有锁前 / 锁后 meta 工艺，不能使用精华。';
+    if (item.ilvl < (essence.minIlvl || 1)) return '物品等级不足，需要 ' + essence.minIlvl + ' 级。';
     const slot = getBase(item.baseId).slot;
     const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
       : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
@@ -530,6 +533,7 @@
   }
   function fossilAvailability(item, ids) {
     if (item.corrupted) return '物品已腐化，不能使用化石。';
+    if (item.meta && (item.meta.lockPrefix || item.meta.lockSuffix)) return '物品有锁前 / 锁后 meta 工艺，不能使用化石。';
     if (item.rarity !== 'rare') return '化石只能用于稀有物品。';
     if (!ids || !ids.length) return '请至少选择一枚化石。';
     return null;

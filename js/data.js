@@ -892,6 +892,9 @@
   /* ------------------------------------------------------------------ *
    * 目标模板
    * ------------------------------------------------------------------ */
+  /* 当前内置的是震耳（Deafening, tier 7）精华：普通/稀有可用，物品等级至少 65。 */
+  essences.forEach((e) => { e.tier = 7; e.minIlvl = 65; e.canReforgeRare = true; });
+
   const presets = [
     {
       id: 'life_helmet', name: '血量双抗头盔', desc: '入门目标：T3 生命 + T4 双抗。T4 抗性可以用工艺补最后一条，适合先跑通流程。',
@@ -996,7 +999,7 @@
   const data = {
     version: '1.0.1',
     configMode: 'static',
-    essenceHint: '精华只能用于普通或稀有物品：普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
+    essenceHint: '精华只能用于普通或稀有物品，且物品等级至少 65；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
     basicActions: [
       { type: 'transmute', name: '蜕变石', short: '蜕', color: '#8fa3c8', desc: '普通 → 1 词缀魔法', cost: 'transmute' },
       { type: 'alteration', name: '改造石', short: '改', color: '#7f9fe8', desc: '重铸魔法词缀（1–2 条）', cost: 'alteration' },

@@ -804,8 +804,8 @@
     if (stateLine) {
       const ev = E.evaluate(state.item, currentTargets());
       stateLine.textContent = state.item.rarity === 'normal'
-        ? '普通 · 无词缀' + (state.item.corrupted ? ' · 已腐化' : '')
-        : E.rarityName(state.item.rarity) + ' · 前缀 ' + ev.prefixCount + '/' + E.sideCap(state.item, 'prefix') + ' · 后缀 ' + ev.suffixCount + '/' + E.sideCap(state.item, 'suffix') + ' · 还能加 ' + (ev.openPrefix + ev.openSuffix) + ' 条' + (state.item.corrupted ? ' · 已腐化' : '');
+        ? '普通 · iLv ' + state.item.ilvl + ' · 无词缀' + (state.item.corrupted ? ' · 已腐化' : '')
+        : E.rarityName(state.item.rarity) + ' · iLv ' + state.item.ilvl + ' · 前缀 ' + ev.prefixCount + '/' + E.sideCap(state.item, 'prefix') + ' · 后缀 ' + ev.suffixCount + '/' + E.sideCap(state.item, 'suffix') + ' · 还能加 ' + (ev.openPrefix + ev.openSuffix) + ' 条' + (state.item.corrupted ? ' · 已腐化' : '');
     }
     const body = $('#action-body');
     if (state.tab === 'basic') renderBasicActions(body);
