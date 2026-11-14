@@ -91,7 +91,11 @@
     "sorrow_4": 2,
     "rage_4": 2,
     "spite_4": 2,
-    "scorn_4": 3
+    "scorn_4": 3,
+    "greed_3": 1,
+    "woe_3": 1,
+    "zeal_3": 1,
+    "loathing_3": 2
   },
   "fossils": {
     "pristine": 6,
