@@ -102,6 +102,8 @@
       case 'scour': return '重铸重来';
       case 'divine': return '神圣石调数值';
       case 'vaal': return '瓦尔腐化';
+      case 'scrap': return '护甲片提品质';
+      case 'whetstone': return '磨刀石提品质';
       case 'awakener': return '觉醒者之石 · 双势力';
       case 'aisling': return '爱斯琳 · 隐秘词缀';
       case 'eldritch': return 'Eldritch · ' + (action.kind === 'exarch' ? '灼热' : '吞噬');
@@ -146,6 +148,8 @@
       case 'scour': return '清空词缀回到普通，通常用于彻底重来。';
       case 'divine': return '重掷数值，不改词缀和品级。';
       case 'vaal': return '腐化物品；可能获得腐化基底、变成 6 词缀稀有，或没有额外变化。';
+      case 'scrap': return '提升护甲 / 盾的品质，最高 20%。';
+      case 'whetstone': return '提升武器品质，最高 20%。';
       case 'awakener': return '双势力合成：保留目标与祭品各一条影响词缀，其余重铸。';
       case 'aisling': return '给稀有物品添加一条待揭露的隐秘词缀。';
       case 'eldritch': return '添加 / 替换 ' + (action.kind === 'exarch' ? '灼热' : '吞噬') + ' Eldritch 基底。';

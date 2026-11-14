@@ -442,6 +442,8 @@
       case 'scour': return prices.scour;
       case 'divine': return prices.divine;
       case 'vaal': return prices.vaal;
+      case 'scrap': return prices.scrap;
+      case 'whetstone': return prices.whetstone;
       case 'aisling': return prices.aisling || 160;
       case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
       case 'unveil': return 0;
@@ -570,6 +572,8 @@
         if (item.rarity !== 'magic' && item.rarity !== 'rare') return '神圣石只能用于魔法或稀有物品';
         return item.affixes.length ? null : '没有可重掷数值的词缀';
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
+      case 'scrap':
+      case 'whetstone': return qualityAvailability(item, type);
       case 'aisling': return item.rarity === 'rare' ? null : '爱斯琳只能用于稀有物品';
       case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
       case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
@@ -644,6 +648,14 @@
     };
     item.affixes.push(aff);
     return aff;
+  }
+  function qualityAvailability(item, type) {
+    if (item.corrupted) return '物品已腐化，不能提升品质。';
+    if ((item.quality || 0) >= 20) return '品质已达上限 20%。';
+    const slot = getBase(item.baseId).slot;
+    if (type === 'scrap') return ['helmet', 'body', 'gloves', 'boots', 'shield'].indexOf(slot) !== -1 ? null : '护甲片只能用于护甲 / 盾。';
+    if (type === 'whetstone') return slot === 'weapon' ? null : '磨刀石只能用于武器。';
+    return '未知品质道具。';
   }
   function essenceAvailability(item, essence) {
     if (!essence) return '未知精华。';
@@ -961,6 +973,24 @@
         message = '庄园定向增幅：添加「' + aff.text.split('\n')[0] + '」。';
         break;
       }
+      case 'scrap': {
+        if (next.corrupted) return fail('物品已腐化，不能提升品质。');
+        if (!['helmet', 'body', 'gloves', 'boots', 'shield'].includes(getBase(next.baseId).slot)) return fail('护甲片只能用于护甲 / 盾。');
+        if ((next.quality || 0) >= 20) return fail('品质已达上限 20%。');
+        const gain = randInt(rng, 1, 5);
+        next.quality = Math.min(20, (next.quality || 0) + gain);
+        message = '护甲片：品质提升到 ' + next.quality + '%。';
+        break;
+      }
+      case 'whetstone': {
+        if (next.corrupted) return fail('物品已腐化，不能提升品质。');
+        if (getBase(next.baseId).slot !== 'weapon') return fail('磨刀石只能用于武器。');
+        if ((next.quality || 0) >= 20) return fail('品质已达上限 20%。');
+        const gain = randInt(rng, 1, 5);
+        next.quality = Math.min(20, (next.quality || 0) + gain);
+        message = '磨刀石：品质提升到 ' + next.quality + '%。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1089,6 +1119,7 @@
     lines.push(base.name + ' (' + base.en + ')');
     lines.push('--------');
     lines.push('物品等级: ' + item.ilvl);
+    if (item.quality) lines.push('品质: +' + item.quality + '%');
     if (item.influences.length) {
       lines.push('影响: ' + item.influences.map((id) => {
         const inf = D.influences.find((x) => x.id === id);
@@ -1148,15 +1179,15 @@
     let dps = null, aps = null, crit = null;
     if (base.weapon) {
       const w = base.weapon;
-      const avg = ((w.phys[0] + w.phys[1]) / 2) * (1 + physPct / 100) + physFlat;
+      const avg = ((w.phys[0] + w.phys[1]) / 2) * (1 + (item.quality || 0) / 100) * (1 + physPct / 100) + physFlat;
       aps = w.aps * (1 + atkSpeed / 100);
       crit = w.crit * (1 + critChance / 100);
       dps = avg * aps;
     }
     return {
-      life, es: esFlat + ((base.defence && base.defence.es) || 0) * (1 + esPct / 100),
-      ar: arFlat + ((base.defence && base.defence.ar) || 0) * (1 + arPct / 100),
-      ev: evFlat + ((base.defence && base.defence.ev) || 0) * (1 + evPct / 100),
+      life, es: esFlat + ((base.defence && base.defence.es) || 0) * (1 + (item.quality || 0) / 100) * (1 + esPct / 100),
+      ar: arFlat + ((base.defence && base.defence.ar) || 0) * (1 + (item.quality || 0) / 100) * (1 + arPct / 100),
+      ev: evFlat + ((base.defence && base.defence.ev) || 0) * (1 + (item.quality || 0) / 100) * (1 + evPct / 100),
       res, dps, aps, crit, critMulti,
       physFlat, physPct, atkSpeed,
     };
@@ -1225,7 +1256,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

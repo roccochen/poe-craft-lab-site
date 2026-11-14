@@ -731,7 +731,7 @@
     const ev = E.evaluate(item, currentTargets());
     $('#rarity-label').textContent = E.rarityName(item.rarity) + '物品';
     $('#rarity-label').className = 'rarity-label ' + item.rarity;
-    $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '') + (item.corrupted ? ' · 已腐化' : '');
+    $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '') + (item.corrupted ? ' · 已腐化' : '') + ((item.quality || 0) ? ' · 品质 +' + item.quality + '%' : '');
     const infNames = item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ');
     const modsHtml = item.affixes.length
       ? '<ul class="item-mod-list">' + item.affixes.map((a) => {
@@ -906,6 +906,7 @@
     if (type === 'harvest_remove' || type === 'harvest_add' || type === 'harvest_augment') return '庄园';
     if (type === 'meta') return 'meta';
     if (type === 'vaal') return '腐化';
+    if (type === 'scrap' || type === 'whetstone') return '品质';
     if (type === 'awakener') return '势力合成';
     if (type === 'aisling' || type === 'unveil') return '隐秘';
     if (type === 'eldritch') return 'Eldritch';

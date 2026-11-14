@@ -884,7 +884,7 @@
   const prices = {
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
-    divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160,
+    divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, scrap: 0.1, whetstone: 0.1,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
@@ -1082,6 +1082,8 @@
       { type: 'scour', name: '重铸石', short: '洗', color: '#7a8496', desc: '魔法 / 稀有：清空非破裂', cost: 'scour' },
       { type: 'divine', name: '神圣石', short: '圣', color: '#e7d8b0', desc: '魔法 / 稀有：重掷数值', cost: 'divine' },
       { type: 'vaal', name: '瓦尔宝珠', short: '瓦', color: '#d28b8b', desc: '腐化：可能加腐化基底 / 变稀有 / 无变化', cost: 'vaal' },
+      { type: 'scrap', name: '护甲片', short: '片', color: '#a9b3c2', desc: '护甲 / 盾：品质 +1~5%，最高 20%', cost: 'scrap' },
+      { type: 'whetstone', name: '磨刀石', short: '磨', color: '#b8a58a', desc: '武器：品质 +1~5%，最高 20%', cost: 'whetstone' },
     ],
     bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits,
     ARMOUR, JEWEL, GEAR,
