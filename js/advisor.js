@@ -107,6 +107,7 @@
       case 'awakener': return '觉醒者之石 · 双势力';
       case 'aisling': return '爱斯琳 · 隐秘词缀';
       case 'eldritch': return 'Eldritch · ' + (action.kind === 'exarch' ? '灼热' : '吞噬');
+      case 'orb_conflict': return 'Orb of Conflict';
       case 'unveil': return '揭露隐秘词缀';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
@@ -153,6 +154,7 @@
       case 'awakener': return '双势力合成：保留目标与祭品各一条影响词缀，其余重铸。';
       case 'aisling': return '给稀有物品添加一条待揭露的隐秘词缀。';
       case 'eldritch': return '添加 / 替换 ' + (action.kind === 'exarch' ? '灼热' : '吞噬') + ' Eldritch 基底。';
+      case 'orb_conflict': return '随机提升一种 Eldritch 基底，并降低另一种；降低到 0 会移除。';
       case 'unveil': return '从 3 个隐秘选项中选择 1 条，替换待揭露词缀。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];

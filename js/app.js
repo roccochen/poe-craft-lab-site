@@ -909,7 +909,7 @@
     if (type === 'scrap' || type === 'whetstone') return '品质';
     if (type === 'awakener') return '势力合成';
     if (type === 'aisling' || type === 'unveil') return '隐秘';
-    if (type === 'eldritch') return 'Eldritch';
+    if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -1169,13 +1169,17 @@
     ];
     const current = item.eldritch || {};
     const currentText = kinds.map((k) => current[k.id] ? k.name + '：' + current[k.id].tierName + ' · ' + current[k.id].text : '').filter(Boolean).join(' / ') || '还没有 Eldritch 基底。';
+    const conflictReason = E.orbConflictAvailability(item);
     body.innerHTML = '<div class="awakener-note"><b>Eldritch 基底</b><p>灼热 / 吞噬基底可以同时存在，互相不覆盖；会替换普通基底。有势力的物品不能使用。当前：' + esc(currentText) + '</p></div>' +
+      '<div class="donor-actions"><button class="btn tiny ' + (conflictReason ? 'ghost' : 'gold') + '" type="button" id="btn-orb-conflict" ' + (conflictReason ? 'disabled title="' + esc(conflictReason) + '"' : '') + '>Orb of Conflict · ' + costText(prices.orbConflict || 80) + '</button><span class="donor-hint">' + esc(conflictReason || '随机提升一种基底阶级，并降低另一种') + '</span></div>' +
       kinds.map((k) => '<div class="eldritch-group"><div class="eldritch-title"><span class="orb" style="--orb:' + k.color + '">' + k.short + '</span><b>' + esc(k.name) + '</b></div>' +
         '<div class="eldritch-grid">' + tiers.map((t) => {
           const key = 'eldritch' + t.name;
           return '<button class="eldritch-card" type="button" data-eldritch-kind="' + k.id + '" data-eldritch-tier="' + t.tier + '">' +
             '<b>' + t.name + ' ' + k.currency + '</b><small>' + costText(prices[key] || 1) + '</small></button>';
         }).join('') + '</div></div>').join('');
+    const conflict = $('#btn-orb-conflict');
+    if (conflict) conflict.onclick = () => chooseTool({ type: 'orb_conflict' });
     $$('#action-body [data-eldritch-kind]').forEach((b) => {
       b.onclick = () => chooseTool({ type: 'eldritch', kind: b.dataset.eldritchKind, tier: Number(b.dataset.eldritchTier) });
     });

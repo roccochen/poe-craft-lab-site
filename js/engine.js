@@ -446,6 +446,7 @@
       case 'whetstone': return prices.whetstone;
       case 'aisling': return prices.aisling || 160;
       case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
+      case 'orb_conflict': return prices.orbConflict || 80;
       case 'unveil': return 0;
       case 'awakener': return prices.awakener || 120;
       case 'essence': {
@@ -576,6 +577,7 @@
       case 'whetstone': return qualityAvailability(item, type);
       case 'aisling': return item.rarity === 'rare' ? null : '爱斯琳只能用于稀有物品';
       case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
+      case 'orb_conflict': return orbConflictAvailability(item);
       case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
       case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
@@ -599,6 +601,12 @@
     if (item.influences && item.influences.length) return '有势力的物品不能获得 Eldritch 基底。';
     if (!D.eldritchImplicits[kind]) return '未知 Eldritch 类型。';
     if (!tier || tier < 1 || tier > 4) return '未知 Eldritch 阶级。';
+    return null;
+  }
+  function orbConflictAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能使用 Orb of Conflict。';
+    if (!item.eldritch || !item.eldritch.exarch || !item.eldritch.eater) return '需要同时拥有灼热和吞噬 Eldritch 基底。';
+    if (item.eldritch.exarch.tier >= 6 && item.eldritch.eater.tier >= 6) return '两个 Eldritch 基底都已达到最高阶级。';
     return null;
   }
   function veiledAffix(item) {
@@ -991,6 +999,38 @@
         message = '磨刀石：品质提升到 ' + next.quality + '%。';
         break;
       }
+      case 'orb_conflict': {
+        const reason = orbConflictAvailability(next);
+        if (reason) return fail(reason);
+        const slot = getBase(next.baseId).slot;
+        const raiseKind = rand(rng) < 0.5 ? 'exarch' : 'eater';
+        const lowerKind = raiseKind === 'exarch' ? 'eater' : 'exarch';
+        const raiseDef = D.eldritchImplicits[raiseKind] && D.eldritchImplicits[raiseKind][slot];
+        const lowerDef = D.eldritchImplicits[lowerKind] && D.eldritchImplicits[lowerKind][slot];
+        const raiseTier = Math.min(6, next.eldritch[raiseKind].tier + 1);
+        const raiseInfo = raiseDef && raiseDef.tiers.find((t) => t.tier === raiseTier);
+        if (raiseInfo) {
+          const value = roundVal(randFloat(rng, raiseInfo.v[0], raiseInfo.v[1]));
+          next.eldritch[raiseKind] = Object.assign({}, next.eldritch[raiseKind], {
+            name: raiseDef.name, text: formatText(raiseDef.text, [value]), value,
+            tier: raiseInfo.tier, tierName: raiseInfo.name,
+          });
+        }
+        const lowerTier = next.eldritch[lowerKind].tier - 1;
+        if (lowerTier <= 0) delete next.eldritch[lowerKind];
+        else {
+          const lowerInfo = lowerDef && lowerDef.tiers.find((t) => t.tier === lowerTier);
+          if (lowerInfo) {
+            const value = roundVal(randFloat(rng, lowerInfo.v[0], lowerInfo.v[1]));
+            next.eldritch[lowerKind] = Object.assign({}, next.eldritch[lowerKind], {
+              name: lowerDef.name, text: formatText(lowerDef.text, [value]), value,
+              tier: lowerInfo.tier, tierName: lowerInfo.name,
+            });
+          }
+        }
+        message = 'Orb of Conflict：' + (raiseKind === 'exarch' ? '灼热' : '吞噬') + ' 提升到 ' + next.eldritch[raiseKind].tierName + '，' + (lowerKind === 'exarch' ? '灼热' : '吞噬') + (next.eldritch[lowerKind] ? ' 降低到 ' + next.eldritch[lowerKind].tierName : ' 被移除') + '。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1256,7 +1296,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
