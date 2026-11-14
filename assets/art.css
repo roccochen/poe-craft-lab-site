@@ -496,3 +496,8 @@ body::before {
 .meta-status { margin-top: 5px; color: var(--muted-2); font-size: 9px; line-height: 1.5; }
 .lock-card.meta-applied { border-color: rgba(212, 176, 106, .34); background: rgba(212, 176, 106, .045); }
 .lock-card.meta-applied .meta-status { color: var(--gold-dim); }
+
+.item-implicit.corrupted-implicit { color: #dda091; letter-spacing: .04em; }
+
+.item-card.corrupted { border-color: rgba(196, 96, 82, .55); box-shadow: inset 0 0 0 1px rgba(196, 96, 82, .08), 0 20px 54px rgba(0, 0, 0, .32); }
+.item-card.corrupted .item-name { color: #e7b9a9; text-shadow: 0 0 30px rgba(196, 96, 82, .15); }

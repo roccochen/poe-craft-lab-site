@@ -996,6 +996,19 @@
     { id: 'aura', name: '光环' }, { id: 'resistance', name: '抗性' },
   ];
 
+  const vaalImplicits = {
+    helmet: ['+1 to Level of Socketed Gems', '+(15-25) to Strength', '(4-6)% increased maximum Life'],
+    body: ['+1 to Level of Socketed Gems', '+(15-25) to all Attributes', '(4-6)% increased maximum Life'],
+    gloves: ['(8-10)% increased Attack Speed', '+(15-25) to Dexterity', '(4-6)% increased maximum Life'],
+    boots: ['(8-10)% increased Movement Speed', '+(15-25) to Strength', '(4-6)% increased maximum Life'],
+    shield: ['+(1-2)% to all maximum Elemental Resistances', '+(15-25) to Intelligence', '(4-6)% increased maximum Life'],
+    weapon: ['(8-10)% increased Attack Speed', '+1 to Level of Socketed Gems', '(10-15)% increased Physical Damage'],
+    quiver: ['(8-10)% increased Attack Speed', '+(15-25) to Dexterity', '(10-15)% increased Projectile Damage'],
+    ring: ['+(10-15) to all Attributes', '+(20-30)% to Chaos Resistance', '+(15-25) to maximum Life'],
+    amulet: ['+(10-15) to all Attributes', '+1 to Level of Socketed Gems', '+(20-30)% to Chaos Resistance'],
+    belt: ['+(10-15) to all Attributes', '+(20-30)% to Chaos Resistance', '(10-15)% increased Flask Effect Duration'],
+  };
+
   const data = {
     version: '1.0.1',
     configMode: 'static',
@@ -1011,8 +1024,9 @@
       { type: 'annulment', name: '剥离石', short: '剥', color: '#9a8f7a', desc: '魔法 / 稀有：移除 1 条非破裂', cost: 'annulment' },
       { type: 'scour', name: '重铸石', short: '洗', color: '#7a8496', desc: '魔法 / 稀有：清空非破裂', cost: 'scour' },
       { type: 'divine', name: '神圣石', short: '圣', color: '#e7d8b0', desc: '魔法 / 稀有：重掷数值', cost: 'divine' },
+      { type: 'vaal', name: '瓦尔宝珠', short: '瓦', color: '#d28b8b', desc: '腐化：可能加腐化基底 / 变稀有 / 无变化', cost: 'vaal' },
     ],
-    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags,
+    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits,
     ARMOUR, JEWEL, GEAR,
   };
 

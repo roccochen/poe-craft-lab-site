@@ -100,6 +100,8 @@
       case 'exalted': return '崇高加词缀';
       case 'annulment': return '剥离废词缀';
       case 'scour': return '重铸重来';
+      case 'divine': return '神圣石调数值';
+      case 'vaal': return '瓦尔腐化';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         return e ? (e.tierName + e.name + '精华') : '精华';
@@ -135,6 +137,8 @@
       case 'exalted': return '给稀有物品增加一条随机词缀，占用空位。';
       case 'annulment': return '随机移除一条非破裂词缀，可能移除目标词缀。';
       case 'scour': return '清空词缀回到普通，通常用于彻底重来。';
+      case 'divine': return '重掷数值，不改词缀和品级。';
+      case 'vaal': return '腐化物品；可能获得腐化基底、变成 6 词缀稀有，或没有额外变化。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         const desc = e && essenceDesc(e, item);

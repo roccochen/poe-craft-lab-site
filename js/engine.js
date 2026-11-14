@@ -429,6 +429,7 @@
       case 'annulment': return prices.annulment;
       case 'scour': return prices.scour;
       case 'divine': return prices.divine;
+      case 'vaal': return prices.vaal;
       case 'essence': {
         const e = essenceById[action.essenceId];
         return e ? e.cost * (prices.essenceMult || 1) : 0;
@@ -701,6 +702,31 @@
         message = '使用神圣石：重掷了 ' + changed + ' 条词缀的数值，词缀和品级不变。';
         break;
       }
+      case 'vaal': {
+        if (next.corrupted) return fail('物品已经腐化。');
+        next.corrupted = true;
+        const slot = getBase(next.baseId).slot;
+        const pool = (D.vaalImplicits && D.vaalImplicits[slot]) || [];
+        const roll = rand(rng);
+        if (roll < 0.25 && pool.length) {
+          next.corruptedImplicit = pool[randInt(rng, 0, pool.length - 1)];
+          message = '瓦尔宝珠：获得腐化基底「' + next.corruptedImplicit + '」。';
+        } else if (roll < 0.5) {
+          message = '瓦尔宝珠：白孔结果（本模拟器未建模插槽，物品只获得腐化状态）。';
+        } else if (roll < 0.75) {
+          const locks = lockedSides(next);
+          const preserve = [];
+          if (locks.prefix) preserve.push('prefix');
+          if (locks.suffix) preserve.push('suffix');
+          next.rarity = 'rare';
+          clearForReroll(next, preserve);
+          fillTo(next, 6, rng, { preserveSides: preserve });
+          message = '瓦尔宝珠：物品变为 6 词缀稀有物品。';
+        } else {
+          message = '瓦尔宝珠：没有发生额外变化，物品被腐化。';
+        }
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -835,7 +861,8 @@
         return inf ? inf.name : id;
       }).join(' / '));
     }
-    if (base.implicit) lines.push('--------', base.implicit);
+    if (item.corruptedImplicit) lines.push('--------', '腐化基底: ' + item.corruptedImplicit);
+    else if (base.implicit) lines.push('--------', base.implicit);
     if (item.affixes.length) {
       lines.push('--------');
       item.affixes.forEach((a) => {

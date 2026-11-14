@@ -746,12 +746,12 @@
     const openBits = [];
     if (ev.openPrefix) openBits.push('空前缀 ' + ev.openPrefix);
     if (ev.openSuffix) openBits.push('空后缀 ' + ev.openSuffix);
-    $('#item-card').className = 'item-card rarity-' + item.rarity;
+    $('#item-card').className = 'item-card rarity-' + item.rarity + (item.corrupted ? ' corrupted' : '');
     $('#item-card').innerHTML =
       '<div class="item-header"><div class="item-name">' + esc(base.name) + '</div>' +
       '<div class="item-en">' + esc(base.en) + '</div></div>' +
       '<div class="item-sep"></div>' +
-      (base.implicit ? '<div class="item-implicit">' + esc(base.implicit) + '</div><div class="item-sep"></div>' : '') +
+      ((item.corruptedImplicit || base.implicit) ? '<div class="item-implicit' + (item.corruptedImplicit ? ' corrupted-implicit' : '') + '">' + esc(item.corruptedImplicit ? '腐化基底：' + item.corruptedImplicit : base.implicit) + '</div><div class="item-sep"></div>' : '') +
       (infNames ? '<div class="item-implicit" style="color:var(--purple)">影响：' + esc(infNames) + '</div><div class="item-sep"></div>' : '') +
       '<div class="item-body">' + modsHtml +
       (openBits.length ? '<div class="item-open">' + openBits.join(' · ') + '</div>' : '') +
@@ -852,6 +852,7 @@
     if (type === 'essence') return '保底';
     if (type === 'fossil' || type === 'harvest') return '重铸';
     if (type === 'meta') return 'meta';
+    if (type === 'vaal') return '腐化';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
