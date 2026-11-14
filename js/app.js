@@ -858,6 +858,22 @@
     switchView('gear');
     toast('已清空，重新开始。底子、目标、记录和花费都已重置。', 'success', 3500);
   }
+  function makeFracturedBase() {
+    const apply = () => {
+      state.item = E.makeFracturedItem(state.baseId, {
+        ilvl: state.ilvl, influences: state.influences, rng: E.makeRng((Date.now() ^ 0x9e3779b9) >>> 0),
+      });
+      resetProgress();
+      save();
+      renderAll();
+      toast('已生成破裂底子：1 条破裂词缀 + 3 条普通词缀。破裂词缀不会被剥离 / 混沌 / 重铸移除。', 'success', 4200);
+    };
+    if (state.item.affixes.length || state.log.length || state.spent > 0) {
+      openConfirm('生成破裂底子？', '会清空当前物品词缀和制作记录，重新生成一件带 1 条破裂词缀的稀有底子。', apply);
+    } else {
+      apply();
+    }
+  }
   function donorEligibility(item) {
     if (!item) return '请先制作 / 录入一件祭品。';
     if (item.corrupted) return '祭品不能腐化。';
@@ -2354,6 +2370,7 @@
       toast('物品等级已设为 ' + v + '。');
     });
     $('#btn-undo').onclick = undo;
+    $('#btn-fractured').onclick = makeFracturedBase;
     $('#btn-reset').onclick = () => {
       openConfirm('重置物品？', '会清空当前物品词缀、制作记录与花费统计，底子和目标保留。', () => {
         state.item = E.createItem(state.baseId, { ilvl: state.ilvl, influences: state.influences });

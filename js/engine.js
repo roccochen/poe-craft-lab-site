@@ -272,6 +272,15 @@
     };
   }
 
+  function makeFracturedItem(baseId, opts) {
+    opts = opts || {};
+    const rng = opts.rng || defaultRng;
+    const item = createItem(baseId, { ilvl: opts.ilvl, influences: opts.influences, rarity: 'rare' });
+    const side = rand(rng) < 0.5 ? 'prefix' : 'suffix';
+    addRandomAffix(item, side, rng, { fractured: true });
+    fillTo(item, 4, rng, {});
+    return item;
+  }
   function addRandomAffix(item, side, rng, opts) {
     if (!canAdd(item, side)) return null;
     const pool = candidatesFor(item, side, opts || {});
@@ -279,7 +288,7 @@
     const choice = weightedPick(rng, pool, (x) => x.weight);
     if (!choice) return null;
     const tier = pickTier(rng, choice.mod, choice.tiers);
-    const aff = makeAffix(choice.mod, tier, rng);
+    const aff = makeAffix(choice.mod, tier, rng, { fractured: !!(opts && opts.fractured) });
     item.affixes.push(aff);
     return aff;
   }
@@ -1214,7 +1223,7 @@
 
   const api = {
     makeRng, rand, randInt, randFloat, weightedPick, clone,
-    getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
+    getBase, createItem, makeFracturedItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
     essenceAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
