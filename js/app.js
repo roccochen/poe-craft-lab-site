@@ -226,6 +226,12 @@
   }
   function renderHeader() {
     $('#data-version').textContent = D.version;
+    const modeEl = $('#runtime-mode');
+    if (modeEl) {
+      const hosted = location.protocol !== 'file:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+      modeEl.textContent = hosted ? (staticConfigMode() ? '静态站点' : '在线') : '本地运行';
+      modeEl.title = hosted ? (staticConfigMode() ? '当前使用同源静态价格配置' : '当前使用 Worker 实时价格配置') : '本机预览';
+    }
     $('#spent-total').textContent = costText(state.spent);
     $('#attempt-total').textContent = state.attempts;
     renderGameSwitch();
