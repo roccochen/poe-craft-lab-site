@@ -468,6 +468,7 @@
       case 'orb_conflict': return prices.orbConflict || 80;
       case 'influence_exalt': return prices.influenceExalt || 90;
       case 'bench_remove': return prices.scour;
+      case 'veiled_chaos': return prices.veiledChaos || 6;
       case 'tainted_chaos': return prices.taintedChaos;
       case 'tainted_exalted': return prices.taintedExalted;
       case 'tainted_divine': return prices.taintedDivine;
@@ -605,6 +606,7 @@
       case 'orb_conflict': return orbConflictAvailability(item);
       case 'influence_exalt': return influenceAvailability(item, action.influence);
       case 'bench_remove': return benchRemoveAvailability(item);
+      case 'veiled_chaos': return veiledChaosAvailability(item);
       case 'tainted_chaos':
       case 'tainted_exalted':
       case 'tainted_divine':
@@ -706,6 +708,11 @@
     temp.influences = (item.influences || []).concat([influenceId]);
     const sides = ['prefix', 'suffix'].filter((side) => canAdd(temp, side) && candidatesFor(temp, side, { influence: influenceId }).length);
     return sides.length ? null : '没有空位或该势力没有可用词缀。';
+  }
+  function veiledChaosAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能使用隐秘混沌石。';
+    if (item.rarity !== 'rare') return '隐秘混沌石只能用于稀有物品。';
+    return null;
   }
   function benchRemoveAvailability(item) {
     if (item.corrupted) return '物品已腐化，不能使用工艺台。';
@@ -1147,6 +1154,28 @@
         message = '工艺台：移除了 ' + removed + ' 条工艺词缀。';
         break;
       }
+      case 'veiled_chaos': {
+        const reason = veiledChaosAvailability(next);
+        if (reason) return fail(reason);
+        clearForReroll(next, []);
+        next.rarity = 'rare';
+        fillTo(next, rollRareCount(rng), rng, {});
+        const removable = next.affixes.filter((a) => !a.fractured);
+        let side;
+        if (removable.length) {
+          const victim = removable[randInt(rng, 0, removable.length - 1)];
+          side = victim.affix;
+          next.affixes = next.affixes.filter((a) => a !== victim);
+        } else {
+          side = canAdd(next, 'prefix') ? 'prefix' : 'suffix';
+        }
+        if (!canAdd(next, side)) side = canAdd(next, 'prefix') ? 'prefix' : (canAdd(next, 'suffix') ? 'suffix' : null);
+        if (!side) return fail('没有空位添加隐秘词缀。');
+        addVeiledAffix(next, side);
+        next.veiledOptions = veiledChoices(next, rng).map((m) => m.id);
+        message = '隐秘混沌石：重铸稀有物品，并留下 1 条待揭露隐秘词缀。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1412,7 +1441,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, benchRemoveAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

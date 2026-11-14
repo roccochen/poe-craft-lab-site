@@ -886,6 +886,7 @@
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
     taintedChaos: 4, taintedExalted: 25, taintedDivine: 40, taintedAnnul: 8,
     divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, influenceExalt: 90, scrap: 0.1, whetstone: 0.1,
+    veiledChaos: 6,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50, orbConflict: 80,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
@@ -1108,6 +1109,7 @@
       { type: 'vaal', name: '瓦尔宝珠', short: '瓦', color: '#d28b8b', desc: '腐化：可能加腐化基底 / 变稀有 / 无变化', cost: 'vaal' },
       { type: 'scrap', name: '护甲片', short: '片', color: '#a9b3c2', desc: '护甲 / 盾：品质 +1~5%，最高 20%', cost: 'scrap' },
       { type: 'whetstone', name: '磨刀石', short: '磨', color: '#b8a58a', desc: '武器：品质 +1~5%，最高 20%', cost: 'whetstone' },
+      { type: 'veiled_chaos', name: '隐秘混沌石', short: '隐混', color: '#b9a7d8', desc: '重铸稀有物品，并保证 1 条待揭露隐秘词缀', cost: 'veiledChaos' },
     ],
     bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits, influenceOrbs,
     ARMOUR, JEWEL, GEAR,
