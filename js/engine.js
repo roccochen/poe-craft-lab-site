@@ -467,6 +467,7 @@
       case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
       case 'orb_conflict': return prices.orbConflict || 80;
       case 'influence_exalt': return prices.influenceExalt || 90;
+      case 'bench_remove': return prices.scour;
       case 'tainted_chaos': return prices.taintedChaos;
       case 'tainted_exalted': return prices.taintedExalted;
       case 'tainted_divine': return prices.taintedDivine;
@@ -603,6 +604,7 @@
       case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
       case 'orb_conflict': return orbConflictAvailability(item);
       case 'influence_exalt': return influenceAvailability(item, action.influence);
+      case 'bench_remove': return benchRemoveAvailability(item);
       case 'tainted_chaos':
       case 'tainted_exalted':
       case 'tainted_divine':
@@ -704,6 +706,11 @@
     temp.influences = (item.influences || []).concat([influenceId]);
     const sides = ['prefix', 'suffix'].filter((side) => canAdd(temp, side) && candidatesFor(temp, side, { influence: influenceId }).length);
     return sides.length ? null : '没有空位或该势力没有可用词缀。';
+  }
+  function benchRemoveAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能使用工艺台。';
+    if (!item.affixes.some((a) => a.crafted)) return '没有可移除的工艺词缀。';
+    return null;
   }
   function qualityAvailability(item, type) {
     if (item.corrupted) return '物品已腐化，不能提升品质。';
@@ -1130,6 +1137,16 @@
         message = '腐化剥离石：移除了「' + victim.text.split('\n')[0] + '」。';
         break;
       }
+      case 'bench_remove': {
+        const reason = benchRemoveAvailability(next);
+        if (reason) return fail(reason);
+        const removed = next.affixes.filter((a) => a.crafted).length;
+        next.affixes = next.affixes.filter((a) => !a.crafted);
+        syncMetaFlags(next);
+        normalizeRarity(next);
+        message = '工艺台：移除了 ' + removed + ' 条工艺词缀。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1395,7 +1412,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, benchRemoveAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

@@ -971,7 +971,7 @@
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
     if (type.indexOf('tainted_') === 0) return 'Tainted';
-    if (type === 'bench' || type === 'multimod') return '收尾';
+    if (type === 'bench' || type === 'multimod' || type === 'bench_remove') return '收尾';
     return '操作';
   }
   function basicActions() {
@@ -1405,6 +1405,7 @@
     html += '<div class="form-hint" style="margin-top:12px;margin-bottom:6px">meta 工艺（2 崇高；会占用真实的词缀位）</div>' +
       '<div class="lock-grid">' + metaCard('lock_prefix') + metaCard('lock_suffix') + '</div>' +
       '<div class="lock-grid" style="margin-top:6px">' + metaCard('multimod') + '</div>';
+    html += '<div class="fossil-bar" style="margin-top:9px"><div class="fossil-detail">' + esc(E.benchRemoveAvailability(state.item) || '移除所有工艺 / meta 词缀，保留普通词缀。') + '</div><button class="btn tiny" id="btn-bench-remove" ' + (E.benchRemoveAvailability(state.item) ? 'disabled' : '') + '>移除工艺词缀 ' + costText(prices.scour) + '</button></div>';
     body.innerHTML = html;
     $$('#action-body [data-bench]').forEach((b) => {
       b.onclick = () => chooseTool({ type: 'bench', benchId: b.dataset.bench });
