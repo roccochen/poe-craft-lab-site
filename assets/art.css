@@ -576,3 +576,7 @@ body::before {
 .donor-chip { padding: 4px 7px; border: 1px solid rgba(255, 255, 255, .075); border-radius: 5px; color: var(--muted); font-size: 9px; background: rgba(0, 0, 0, .12); }
 .donor-chip:hover { border-color: rgba(212, 176, 106, .38); }
 .donor-chip.active { border-color: rgba(212, 176, 106, .5); color: var(--gold-bright); background: rgba(212, 176, 106, .07); }
+
+.donor-stash > b { display: inline-block; margin-right: 8px; }
+.donor-clear { padding: 2px 6px; border: 1px solid rgba(255, 255, 255, .09); border-radius: 4px; color: var(--muted-2); font-size: 8px; background: transparent; }
+.donor-clear:hover { border-color: rgba(200, 100, 100, .4); color: #d99; }

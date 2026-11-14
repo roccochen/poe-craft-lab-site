@@ -959,6 +959,13 @@
     renderAll();
     toast('已把当前物品保存为祭品。接下来换目标底子 / 势力，再回「势力合成」选择祭品词缀。', 'success', 5000);
   }
+  function clearAllDonors() {
+    state.donors = [];
+    state.donor = null;
+    save();
+    renderAll();
+    toast('已清空祭品仓库。');
+  }
   function clearDonor() {
     if (state.donor && state.donor.savedAt) state.donors = state.donors.filter((d) => d.savedAt !== state.donor.savedAt);
     state.donor = state.donors[state.donors.length - 1] || null;
@@ -1371,7 +1378,7 @@
     const item = state.item;
     const donor = state.donor;
     const infName = (id) => (D.influences.find((x) => x.id === id) || {}).name || id;
-    const stashHtml = state.donors.length ? '<div class="donor-stash"><b>祭品仓库 ' + state.donors.length + '/8</b><div class="donor-chips">' + state.donors.map((d, i) => {
+    const stashHtml = state.donors.length ? '<div class="donor-stash"><b>祭品仓库 ' + state.donors.length + '/8</b><button type="button" class="donor-clear" data-clear-donors>清空</button><div class="donor-chips">' + state.donors.map((d, i) => {
       const inf = d.influences && d.influences[0];
       const active = state.donor && d.savedAt === state.donor.savedAt;
       return '<button type="button" class="donor-chip ' + (active ? 'active' : '') + '" data-donor-pick="' + i + '">' + esc((E.getBase(d.baseId) || {}).name || d.baseId) + ' · ' + esc(infName(inf)) + '</button>';
@@ -1399,6 +1406,8 @@
             '<small>T' + a.tierRank + ' · iLv ' + a.tierIlvl + '</small></button>';
         }).join('') + '</div>');
       const clear = $('#btn-clear-donor');
+      const clearAll = $('#action-body [data-clear-donors]');
+      if (clearAll) clearAll.onclick = clearAllDonors;
       if (clear) clear.onclick = clearDonor;
       $$('#action-body [data-donor-pick]').forEach((b) => {
         b.onclick = () => { state.donor = state.donors[Number(b.dataset.donorPick)] || null; renderActionBody(); };
@@ -1430,6 +1439,8 @@
     $$('#action-body [data-donor-pick]').forEach((b) => {
       b.onclick = () => { state.donor = state.donors[Number(b.dataset.donorPick)] || null; renderActionBody(); };
     });
+    const clearAll = $('#action-body [data-clear-donors]');
+    if (clearAll) clearAll.onclick = clearAllDonors;
     const saveBtn = $('#btn-save-donor');
     if (saveBtn) saveBtn.onclick = saveCurrentAsDonor;
     $$('#action-body [data-awakener-mod]').forEach((b) => {
@@ -2442,6 +2453,9 @@
       state.targets = (parsed.targets || []).filter((t) => E.getTargetDef(t.modId));
       state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.influences, state.ilvl));
       state.log = parsed.log || [];
+      state.donors = (Array.isArray(parsed.donors) ? parsed.donors : (parsed.donor ? [parsed.donor] : []))
+        .filter((d) => d && d.baseId && E.getBase(d.baseId)).slice(-8).map((d, i) => { const copy = E.clone(d); copy.savedAt = copy.savedAt || (Date.now() + i); return copy; });
+      state.donor = state.donors[state.donors.length - 1] || null;
       state.spent = parsed.spent || 0;
       state.attempts = parsed.attempts || 0;
       state.settings = Object.assign(baseSettings(), parsed.settings || {});
