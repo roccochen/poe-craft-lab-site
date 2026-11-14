@@ -990,6 +990,212 @@
     },
   ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
 
+  [
+    {
+      id: 'contempt_5', name: '蔑视', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#d89a7a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'reflect_phys', text: '反射 {0} 点物理伤害给近战攻击者', tags: ['physical'], v: [[51, 100]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_flat', text: '增加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[13, 18], [27, 31]] },
+        jewellery: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[9, 12], [19, 22]] },
+      },
+      bySlot: {
+        gloves: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[9, 12], [19, 22]] },
+        quiver: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[9, 12], [19, 22]] },
+      },
+    },
+    {
+      id: 'contempt_6', name: '蔑视', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#d89a7a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'reflect_phys', text: '反射 {0} 点物理伤害给近战攻击者', tags: ['physical'], v: [[101, 150]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_flat', text: '增加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[16, 21], [32, 38]] },
+        jewellery: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[11, 15], [22, 26]] },
+      },
+      bySlot: {
+        gloves: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[11, 15], [22, 26]] },
+        quiver: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[11, 15], [22, 26]] },
+      },
+    },
+    {
+      id: 'hatred_5', name: '憎恨', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#8fd8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_cold', text: '+{0}% 冰霜抗性', tags: ['resistance', 'cold'], v: [[36, 41]] },
+        weapon: { affix: 'prefix', group: 'weapon_cold_flat', text: '增加 {0} 到 {1} 点冰霜伤害', tags: ['cold', 'attack'], v: [[54, 74], [108, 126]] },
+        jewellery: { affix: 'prefix', group: 'cold_damage', text: '冰霜伤害提高 {0}%', tags: ['cold', 'damage'], v: [[23, 26]] },
+      },
+    },
+    {
+      id: 'hatred_6', name: '憎恨', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#8fd8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_cold', text: '+{0}% 冰霜抗性', tags: ['resistance', 'cold'], v: [[42, 45]] },
+        weapon: { affix: 'prefix', group: 'weapon_cold_flat', text: '增加 {0} 到 {1} 点冰霜伤害', tags: ['cold', 'attack'], v: [[75, 91], [127, 145]] },
+        jewellery: { affix: 'prefix', group: 'cold_damage', text: '冰霜伤害提高 {0}%', tags: ['cold', 'damage'], v: [[27, 30]] },
+      },
+    },
+    {
+      id: 'anger_5', name: '愤怒', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#e88a6a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_fire', text: '+{0}% 火焰抗性', tags: ['resistance', 'fire'], v: [[36, 41]] },
+        weapon: { affix: 'prefix', group: 'weapon_fire_flat', text: '增加 {0} 到 {1} 点火焰伤害', tags: ['fire', 'attack'], v: [[59, 81], [120, 140]] },
+        jewellery: { affix: 'prefix', group: 'fire_damage', text: '火焰伤害提高 {0}%', tags: ['fire', 'damage'], v: [[23, 26]] },
+      },
+    },
+    {
+      id: 'anger_6', name: '愤怒', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#e88a6a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_fire', text: '+{0}% 火焰抗性', tags: ['resistance', 'fire'], v: [[42, 45]] },
+        weapon: { affix: 'prefix', group: 'weapon_fire_flat', text: '增加 {0} 到 {1} 点火焰伤害', tags: ['fire', 'attack'], v: [[82, 100], [141, 165]] },
+        jewellery: { affix: 'prefix', group: 'fire_damage', text: '火焰伤害提高 {0}%', tags: ['fire', 'damage'], v: [[27, 30]] },
+      },
+    },
+    {
+      id: 'wrath_5', name: '雷霆', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#f0d96a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_light', text: '+{0}% 闪电抗性', tags: ['resistance', 'lightning'], v: [[36, 41]] },
+        weapon: { affix: 'prefix', group: 'weapon_light_flat', text: '增加 {0} 到 {1} 点闪电伤害', tags: ['lightning', 'attack'], v: [[10, 14], [197, 229]] },
+        jewellery: { affix: 'prefix', group: 'light_damage', text: '闪电伤害提高 {0}%', tags: ['lightning', 'damage'], v: [[23, 26]] },
+      },
+    },
+    {
+      id: 'wrath_6', name: '雷霆', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#f0d96a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_light', text: '+{0}% 闪电抗性', tags: ['resistance', 'lightning'], v: [[42, 45]] },
+        weapon: { affix: 'prefix', group: 'weapon_light_flat', text: '增加 {0} 到 {1} 点闪电伤害', tags: ['lightning', 'attack'], v: [[15, 20], [230, 268]] },
+        jewellery: { affix: 'prefix', group: 'light_damage', text: '闪电伤害提高 {0}%', tags: ['lightning', 'damage'], v: [[27, 30]] },
+      },
+    },
+    {
+      id: 'envy_5', name: '嫉妒', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 4, color: '#a8e88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_chaos', text: '+{0}% 混沌抗性', tags: ['resistance', 'chaos'], v: [[21, 25]] },
+        weapon: { affix: 'prefix', group: 'chaos_flat', text: '增加 {0} 到 {1} 点混沌伤害', tags: ['chaos', 'attack'], v: [[37, 59], [79, 103]] },
+        jewellery: { affix: 'prefix', group: 'chaos_damage', text: '混沌伤害提高 {0}%', tags: ['chaos', 'damage'], v: [[23, 26]] },
+      },
+    },
+    {
+      id: 'envy_6', name: '嫉妒', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 5, color: '#a8e88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_chaos', text: '+{0}% 混沌抗性', tags: ['resistance', 'chaos'], v: [[26, 30]] },
+        weapon: { affix: 'prefix', group: 'chaos_flat', text: '增加 {0} 到 {1} 点混沌伤害', tags: ['chaos', 'attack'], v: [[60, 80], [104, 130]] },
+        jewellery: { affix: 'prefix', group: 'chaos_damage', text: '混沌伤害提高 {0}%', tags: ['chaos', 'damage'], v: [[27, 30]] },
+      },
+    },
+    {
+      id: 'misery_5', name: '悲惨', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#9a9ae8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'mana_flat', text: '+{0} 最大魔力', tags: ['mana'], v: [[55, 59]] },
+        weapon: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v: [[21, 24]] },
+        jewellery: { affix: 'suffix', group: 'mana_regen', text: '魔力回复速度提高 {0}%', tags: ['mana'], v: [[50, 59]] },
+      },
+    },
+    {
+      id: 'misery_6', name: '悲惨', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#9a9ae8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'mana_flat', text: '+{0} 最大魔力', tags: ['mana'], v: [[65, 68]] },
+        weapon: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v: [[25, 28]] },
+        jewellery: { affix: 'suffix', group: 'mana_regen', text: '魔力回复速度提高 {0}%', tags: ['mana'], v: [[60, 69]] },
+      },
+    },
+  ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
+
+  [
+    {
+      id: 'doubt_5', name: '疑虑', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#9ad8b8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[91, 105]] },
+        weapon: { affix: 'suffix', group: 'accuracy', text: '+{0} 命中值', tags: ['attack'], v: [[326, 455]] },
+        jewellery: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[81, 120]] },
+      },
+    },
+    {
+      id: 'doubt_6', name: '疑虑', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#9ad8b8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[106, 120]] },
+        weapon: { affix: 'suffix', group: 'accuracy', text: '+{0} 命中值', tags: ['attack'], v: [[456, 624]] },
+        jewellery: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[121, 150]] },
+      },
+    },
+    {
+      id: 'dread_5', name: '恐惧', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#b8a88f',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[91, 105]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_pct', text: '{0}% 物理伤害提高', tags: ['physical', 'attack'], v: [[12, 16]] },
+        jewellery: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[81, 120]] },
+      },
+    },
+    {
+      id: 'dread_6', name: '恐惧', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#b8a88f',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[106, 120]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_pct', text: '{0}% 物理伤害提高', tags: ['physical', 'attack'], v: [[17, 21]] },
+        jewellery: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[121, 150]] },
+      },
+    },
+    {
+      id: 'sorrow_5', name: '悲伤', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#8fc9e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[33, 37]] },
+        weapon: { affix: 'prefix', group: 'cold_pen', text: '伤害穿透 {0}% 冰霜抗性', tags: ['cold'], v: [[6, 6]] },
+        jewellery: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[33, 37]] },
+      },
+    },
+    {
+      id: 'sorrow_6', name: '悲伤', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#8fc9e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[43, 50]] },
+        weapon: { affix: 'prefix', group: 'cold_pen', text: '伤害穿透 {0}% 冰霜抗性', tags: ['cold'], v: [[7, 7]] },
+        jewellery: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[43, 50]] },
+      },
+    },
+    {
+      id: 'rage_5', name: '暴怒', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#e89a7a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[33, 37]] },
+        weapon: { affix: 'prefix', group: 'fire_pen', text: '伤害穿透 {0}% 火焰抗性', tags: ['fire'], v: [[6, 6]] },
+        jewellery: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[33, 37]] },
+      },
+    },
+    {
+      id: 'rage_6', name: '暴怒', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#e89a7a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[43, 50]] },
+        weapon: { affix: 'prefix', group: 'fire_pen', text: '伤害穿透 {0}% 火焰抗性', tags: ['fire'], v: [[7, 7]] },
+        jewellery: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[43, 50]] },
+      },
+    },
+    {
+      id: 'spite_5', name: '恶意', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#e8d88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[33, 37]] },
+        weapon: { affix: 'prefix', group: 'light_pen', text: '伤害穿透 {0}% 闪电抗性', tags: ['lightning'], v: [[6, 6]] },
+        jewellery: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[33, 37]] },
+      },
+    },
+    {
+      id: 'spite_6', name: '恶意', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#e8d88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[43, 50]] },
+        weapon: { affix: 'prefix', group: 'light_pen', text: '伤害穿透 {0}% 闪电抗性', tags: ['lightning'], v: [[7, 7]] },
+        jewellery: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[43, 50]] },
+      },
+    },
+    {
+      id: 'scorn_5', name: '轻视', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 4, color: '#c9b8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_avoid', text: '{0}% 几率避免被眩晕', tags: ['defence'], v: [[23, 26]] },
+        weapon: { affix: 'suffix', group: 'spell_crit', text: '法术暴击率提高 {0}%', tags: ['critical', 'caster'], v: [[80, 89]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v: [[21, 25]] },
+      },
+    },
+    {
+      id: 'scorn_6', name: '轻视', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 5, color: '#c9b8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_avoid', text: '{0}% 几率避免被眩晕', tags: ['defence'], v: [[27, 30]] },
+        weapon: { affix: 'suffix', group: 'spell_crit', text: '法术暴击率提高 {0}%', tags: ['critical', 'caster'], v: [[90, 109]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v: [[26, 30]] },
+      },
+    },
+  ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
+
   const presets = [
     {
       id: 'life_helmet', name: '血量双抗头盔', desc: '入门目标：T3 生命 + T4 双抗。T4 抗性可以用工艺补最后一条，适合先跑通流程。',

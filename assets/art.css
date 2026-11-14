@@ -555,3 +555,5 @@ body::before {
 .fracture-row span { color: #e6dfd0; font-size: 10.5px; }
 .fracture-row em { color: var(--muted-2); font-size: 9.5px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fracture-row small { color: var(--gold-dim); font-size: 9px; text-align: right; }
+
+.essence-tiers { margin-bottom: 8px; }

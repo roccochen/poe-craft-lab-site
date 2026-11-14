@@ -68,6 +68,7 @@
       targetSearch: '',
       fossilSelection: [],
       harvestMode: 'reforge',
+      essenceTier: 7,
       settings: baseSettings(),
       routeStats: null,
       analysisNonce: 0,
@@ -1086,14 +1087,20 @@
   }
   function renderEssenceActions(body) {
     const prices = priceOverrides();
-    const available = D.essences.filter((e) => essenceDescFor(e));
+    const tiers = [
+      { tier: 5, name: '尖啸' }, { tier: 6, name: '刺耳' }, { tier: 7, name: '震耳' },
+    ];
+    if (!tiers.some((t) => t.tier === state.essenceTier)) state.essenceTier = 7;
+    const all = D.essences.filter((e) => essenceDescFor(e));
+    const available = all.filter((e) => e.tier === state.essenceTier);
     if (!available.length) {
       body.innerHTML = '<div class="action-none">当前底子没有可用的精华。箭袋等底子只支持通用通货 / 预兆。</div>';
       return;
     }
     body.innerHTML =
       '<div class="form-hint" style="margin-bottom:8px">' + esc(D.essenceHint || '精华会保底一条对应词缀；对魔法 / 稀有物品的具体规则由引擎决定。') + '</div>' +
-      '<div class="essence-grid">' + available.map((e) => {
+      '<div class="tabs tiny essence-tiers">' + tiers.map((t) => '<button type="button" data-essence-tier="' + t.tier + '" class="' + (state.essenceTier === t.tier ? 'active' : '') + '">' + t.name + ' · T' + t.tier + '</button>').join('') + '</div>' +
+      (available.length ? '<div class="essence-grid">' + available.map((e) => {
         const desc = essenceDescFor(e);
         const preview = E.formatText(desc.text, desc.v.map((r) => (r[0] + r[1]) / 2));
         const cost = E.actionCost({ type: 'essence', essenceId: e.id }, prices);
@@ -1105,7 +1112,10 @@
           '<span class="essence-info"><span class="essence-name"><b>' + esc(e.tierName + e.name) + '</b> 精华</span>' +
           '<span class="essence-mod">' + esc(preview) + '</span></span>' +
           '<span class="essence-cost">' + costText(cost) + '</span></button>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' : '<div class="action-none">该档位没有适配当前底子的精华。</div>');
+    $$('#action-body [data-essence-tier]').forEach((b) => {
+      b.onclick = () => { state.essenceTier = Number(b.dataset.essenceTier); renderActionBody(); };
+    });
     $$('#action-body [data-essence]').forEach((b) => {
       b.onclick = () => {
         const e = D.essences.find((x) => x.id === b.dataset.essence);
