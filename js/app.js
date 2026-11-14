@@ -804,6 +804,44 @@
     state.pendingResult = null;
     state.selectedTool = null;
   }
+  function restartFromScratch() {
+    if (state.autoRunning) stopAuto('已清空当前方案。');
+    const base = E.getBase(D.bases[0].id) || E.getBase(state.baseId);
+    const ilvl = Math.max(1, Math.min(100, (D.presets && D.presets[0] && D.presets[0].ilvl) || 86));
+    state.baseId = base.id;
+    state.slot = base.slot;
+    state.ilvl = ilvl;
+    state.influences = [];
+    state.item = E.createItem(base.id, { ilvl: ilvl, influences: [] });
+    state.targets = [];
+    state.log = [];
+    state.spent = 0;
+    state.attempts = 0;
+    state.history = [];
+    state.routeStats = null;
+    state.analysisNonce += 1;
+    state.autoSteps = 0;
+    state.simulating = false;
+    state.customTargets = false;
+    state.pendingResult = null;
+    state.selectedTool = null;
+    state.fossilSelection = [];
+    state.baseSearch = '';
+    state.targetSearch = '';
+    state.tab = 'basic';
+    state.targetSide = 'prefix';
+    state.view = 'gear';
+    const baseSearch = $('#base-search');
+    if (baseSearch) baseSearch.value = '';
+    const targetSearch = $('#target-search');
+    if (targetSearch) targetSearch.value = '';
+    const ilvlInput = $('#ilvl-input');
+    if (ilvlInput) ilvlInput.value = ilvl;
+    save();
+    renderAll();
+    switchView('gear');
+    toast('已清空，重新开始。底子、目标、记录和花费都已重置。', 'success', 3500);
+  }
   function actionPhase(type) {
     if (type === 'transmute' || type === 'alchemy') return '起手';
     if (type === 'augmentation' || type === 'regal' || type === 'exalted') return '补词缀';
@@ -2156,6 +2194,7 @@
         navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
       } else fallbackCopy(text, done);
     };
+    $('#btn-restart').onclick = restartFromScratch;
     $('#btn-settings').onclick = openSettings;
     $('#config-badge').onclick = openSettings;
     $('#btn-manual').onclick = () => openManual({ fromResult: !!state.pendingResult });

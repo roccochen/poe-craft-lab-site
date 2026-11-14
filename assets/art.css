@@ -489,3 +489,6 @@ body::before {
 .aside-guide ul { margin: 7px 0 0; padding: 0 0 0 12px; color: var(--muted-2); font-size: 10px; line-height: 1.65; }
 .aside-guide li + li { margin-top: 3px; }
 .aside-guide li::marker { color: rgba(212, 176, 106, .55); }
+
+.btn.danger { color: #dda091; border-color: rgba(216, 134, 124, .24); background: rgba(216, 134, 124, .035); }
+.btn.danger:hover:not(:disabled) { color: #f0b6a9; border-color: rgba(216, 134, 124, .5); background: rgba(216, 134, 124, .08); }
