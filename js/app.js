@@ -245,12 +245,83 @@
     $('#attempt-total').textContent = state.attempts;
     renderGameSwitch();
   }
+  function rightHead(step, title, desc) {
+    return '<div class="stage-aside-head"><span class="eyebrow">' + step + '</span><h2>' + title + '</h2><p>' + desc + '</p></div>';
+  }
+  function renderRightPanel() {
+    const stage = state.view;
+    $$('.right-stage').forEach((el) => { el.hidden = el.dataset.rightPanel !== stage; });
+    if (stage === 'gear') {
+      const el = $('#right-gear');
+      if (!el) return;
+      const base = E.getBase(state.item.baseId);
+      const stats = E.derivedStats(state.item);
+      const inf = state.item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ') || '无';
+      let statHtml = '';
+      if (base.weapon) {
+        statHtml = '<div class="aside-metric"><span>物理 DPS</span><b>' + (stats.dps != null ? Math.round(stats.dps) : '—') + '</b></div>' +
+          '<div class="aside-metric"><span>攻击速度</span><b>' + (stats.aps != null ? stats.aps.toFixed(2) : '—') + '</b></div>' +
+          '<div class="aside-metric"><span>暴击</span><b>' + (stats.crit != null ? stats.crit.toFixed(1) + '%' : '—') + '</b></div>';
+      } else {
+        const defs = Object.keys(base.defence || {});
+        statHtml = '<div class="aside-metric"><span>防御</span><b>' + (defs.length ? defs.map((k) => ({ ar: '护甲', ev: '闪避', es: 'ES' }[k] + ' ' + Math.round(stats[k] || 0))).join(' / ') : '—') + '</b></div>' +
+          '<div class="aside-metric"><span>生命</span><b>' + Math.round(stats.life || 0) + '</b></div>' +
+          '<div class="aside-metric"><span>抗性</span><b>' + [stats.fire, stats.cold, stats.light].map((v) => Math.round(v || 0) + '%').join(' / ') + '</b></div>';
+      }
+      el.innerHTML = rightHead('STEP 01', '先确定底子', '底子决定能出现哪些词缀。选错底子，后面再怎么洗也做不出目标。') +
+        '<div class="aside-item-card"><span class="aside-kicker">当前底子</span><b>' + esc(base.name) + '</b><em>' + esc(base.en) + ' · iLv ' + state.item.ilvl + '</em>' +
+        '<div class="aside-metrics">' + statHtml + '</div></div>' +
+        '<div class="aside-line"><span>槽位</span><b>' + esc(slotName(base.slot)) + '</b></div>' +
+        '<div class="aside-line"><span>影响</span><b>' + esc(inf) + '</b></div>' +
+        '<div class="aside-line"><span>已设目标</span><b>' + state.targets.length + ' 条</b></div>' +
+        '<div class="aside-note">不想从零选？回到装备页顶部，点一个「快速模板」，底子和目标会一起填好。</div>' +
+        '<button class="btn gold wide" type="button" data-open-view="targets">去设置目标 →</button>' +
+        '<button class="btn ghost wide" type="button" data-open-view="craft">直接开始做装</button>' +
+        '<div class="aside-guide"><b>选底子时先看这三点</b><ul><li>防御类型决定基础护甲 / 闪避 / ES。</li><li>底子的物品等级决定能出到哪一档词缀。</li><li>影响词缀很强，但只有对应影响才会出现。</li></ul></div>';
+    } else if (stage === 'targets') {
+      const el = $('#right-targets');
+      if (!el) return;
+      const ev = E.evaluate(state.item, currentTargets());
+      const rows = state.targets.map((t) => {
+        const def = E.getTargetDef(t.modId);
+        if (!def) return '';
+        const hit = E.findMatchingAffix(state.item, t);
+        return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>T' + (t.tier || 1) + '+</em><i>' + (hit ? '✓' : '') + '</i></li>';
+      }).join('');
+      el.innerHTML = rightHead('STEP 02', '目标决定路线', '先选 2–3 条。目标越多，路线越长，单次命中概率越低。') +
+        '<div class="aside-progress"><b>' + ev.matchedCount + ' / ' + ev.targetCount + '</b><span>已命中</span></div>' +
+        '<div class="aside-progress-bar"><i style="width:' + Math.round(ev.progress * 100) + '%"></i></div>' +
+        '<ul class="aside-target-list">' + (rows || '<li class="aside-empty">还没有目标词缀。</li>') + '</ul>' +
+        '<div class="aside-line"><span>前缀目标</span><b>' + ev.targetsBySide.prefix.length + ' / 3</b></div>' +
+        '<div class="aside-line"><span>后缀目标</span><b>' + ev.targetsBySide.suffix.length + ' / 3</b></div>' +
+        '<div class="aside-note">' + (state.targets.length ? '目标会自动进入右侧推荐路线。' : '先添加目标，右侧做装建议才会出现。') + '</div>' +
+        '<button class="btn gold wide" type="button" data-open-view="craft">开始做装 →</button>' +
+        '<div class="aside-guide"><b>目标不是越多越好</b><ul><li>2–3 条目标最容易规划，4 条以上要接受更长的路线。</li><li>T1 最难，先设 T2–T4 更现实。</li><li>命中目标后，剩余词缀用工艺台收尾。</li></ul></div>';
+    } else if (stage === 'log') {
+      const el = $('#right-log');
+      if (!el) return;
+      const ev = E.evaluate(state.item, currentTargets());
+      const recent = state.log.slice(0, 4).map((l) => '<li><span>' + esc(l.title) + '</span><em>' + costText(l.cost) + '</em></li>').join('');
+      el.innerHTML = rightHead('STEP 04', '回看每一步', '这里只保留结果和花费；想改目标或继续做装，随时切回前一页。') +
+        '<div class="aside-metrics aside-log-metrics"><div class="aside-metric"><span>总花费</span><b>' + costText(state.spent) + '</b></div><div class="aside-metric"><span>操作</span><b>' + state.attempts + '</b></div><div class="aside-metric"><span>目标</span><b>' + ev.matchedCount + '/' + ev.targetCount + '</b></div></div>' +
+        '<div class="aside-subtitle">最近操作</div><ul class="aside-log-list">' + (recent || '<li class="aside-empty">还没有操作记录。</li>') + '</ul>' +
+        '<button class="btn ghost wide" type="button" data-aside-undo>撤销上一步</button>' +
+        '<button class="btn gold wide" type="button" data-open-view="craft">继续做装 →</button>' +
+        '<div class="aside-guide"><b>记录怎么用</b><ul><li>做错一步点撤销，会回到上一步。</li><li>想保留当前结果，用右上角「保存方案」。</li><li>真实结果与模拟不同，回做装页重新录入。</li></ul></div>';
+      const undoBtn = el.querySelector('[data-aside-undo]');
+      if (undoBtn) undoBtn.onclick = undo;
+    }
+    $$('#step-finish [data-open-view]').forEach((b) => {
+      b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); switchView(b.dataset.openView); };
+    });
+  }
   function renderView() {
     const views = ['gear', 'targets', 'craft', 'log'];
     if (views.indexOf(state.view) === -1) state.view = 'gear';
     $$('.view').forEach((v) => { v.hidden = v.dataset.viewPanel !== state.view; });
     const templates = $('#section-presets');
     if (templates) templates.hidden = state.view !== 'gear';
+    renderRightPanel();
     $$('#workspace-rail [data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
     const foot = $('#rail-foot');
     if (foot) {
@@ -424,6 +495,7 @@
     if (!state.targets.length) {
       el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方添加，或直接点一个快速模板。</div>';
       renderTargetSummary();
+      renderRightPanel();
       return;
     }
     el.innerHTML = state.targets.map((t, i) => {
@@ -466,6 +538,7 @@
       };
     });
     renderTargetSummary();
+    renderRightPanel();
   }
   function renderTargetSideTabs() {
     $('#target-side-tabs').innerHTML = ['prefix', 'suffix'].map((s) =>

@@ -431,3 +431,61 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .workspace { animation: none; }
 }
+
+/* 右侧阶段面板 */
+.right-stage { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+.right-stage[hidden] { display: none !important; }
+.stage-aside-head { padding: 2px 2px 0; }
+.stage-aside-head h2 {
+  margin-top: 3px;
+  font-family: var(--serif);
+  font-size: 19px;
+  letter-spacing: .09em;
+  color: #efdfb8;
+}
+.stage-aside-head p { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.aside-item-card, .aside-panel-card {
+  padding: 14px;
+  border: 1px solid rgba(212, 176, 106, .2);
+  border-radius: 11px;
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgba(212, 176, 106, .08), transparent 62%),
+    rgba(255, 255, 255, .018);
+}
+.aside-kicker { display: block; color: var(--gold-dim); font-size: 8.5px; letter-spacing: .16em; }
+.aside-item-card > b { display: block; margin-top: 3px; font-family: var(--serif); font-size: 18px; letter-spacing: .06em; color: #f1e3c4; }
+.aside-item-card > em { display: block; margin-top: 2px; color: var(--muted-2); font-size: 9.5px; font-style: normal; letter-spacing: .04em; }
+.aside-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 12px; }
+.aside-metric { padding: 7px 7px 6px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 6px; background: rgba(0, 0, 0, .14); }
+.aside-metric span { display: block; color: var(--muted-2); font-size: 8.5px; line-height: 1.4; }
+.aside-metric b { display: block; margin-top: 2px; color: #e8dfce; font-size: 11px; font-weight: 600; }
+.aside-line { display: flex; justify-content: space-between; gap: 10px; padding: 7px 2px; border-bottom: 1px solid rgba(255, 255, 255, .055); font-size: 10.5px; }
+.aside-line span { color: var(--muted-2); }
+.aside-line b { color: #d9d2c4; font-weight: 500; text-align: right; }
+.aside-note { color: var(--muted-2); font-size: 10px; line-height: 1.65; padding: 8px 10px; border-left: 2px solid rgba(138, 211, 222, .25); background: rgba(138, 211, 222, .028); border-radius: 0 5px 5px 0; }
+.aside-progress { display: flex; align-items: baseline; gap: 8px; }
+.aside-progress b { color: var(--gold-2); font-family: var(--serif); font-size: 27px; line-height: 1; }
+.aside-progress span { color: var(--muted-2); font-size: 9.5px; letter-spacing: .06em; }
+.aside-progress-bar { height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+.aside-progress-bar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6b38, #e9cd90); }
+.aside-target-list, .aside-log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.aside-target { display: flex; align-items: center; gap: 6px; padding: 5px 2px; border-bottom: 1px solid rgba(255, 255, 255, .045); color: var(--muted); font-size: 10.5px; }
+.aside-target > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aside-target em { margin-left: auto; color: var(--gold-dim); font-size: 9px; font-style: normal; }
+.aside-target i { width: 12px; color: var(--green); font-style: normal; text-align: center; }
+.aside-target.hit { color: #e7e0d1; }
+.aside-log-list li { display: flex; justify-content: space-between; gap: 9px; padding: 6px 2px; border-bottom: 1px solid rgba(255, 255, 255, .045); font-size: 10px; }
+.aside-log-list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.aside-log-list li em { flex: 0 0 auto; color: var(--gold-dim); font-style: normal; }
+.aside-empty { padding: 8px 2px; color: var(--muted-2); font-size: 10.5px; }
+.aside-subtitle { color: var(--gold-dim); font-size: 9px; letter-spacing: .14em; margin-top: 2px; }
+.aside-log-metrics { margin-top: 0; }
+@media (max-width: 1180px) {
+  .right-panel { display: flex; flex-direction: column; }
+}
+
+.aside-guide { margin-top: 4px; padding: 11px 12px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 8px; background: rgba(0, 0, 0, .13); }
+.aside-guide b { display: block; color: var(--gold-dim); font-size: 9px; letter-spacing: .12em; font-weight: 600; }
+.aside-guide ul { margin: 7px 0 0; padding: 0 0 0 12px; color: var(--muted-2); font-size: 10px; line-height: 1.65; }
+.aside-guide li + li { margin-top: 3px; }
+.aside-guide li::marker { color: rgba(212, 176, 106, .55); }
