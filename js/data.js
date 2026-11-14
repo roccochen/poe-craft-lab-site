@@ -885,7 +885,7 @@
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
     divine: 200, resonator: 1, harvest: 15,
-    lock: 400, multimod: 400, essenceMult: 1, fossilMult: 1,
+    lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
   };
 
@@ -994,8 +994,21 @@
   ];
 
   const data = {
-    version: '1.0.0',
+    version: '1.0.1',
     configMode: 'static',
+    essenceHint: '精华只能用于普通或稀有物品：普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
+    basicActions: [
+      { type: 'transmute', name: '蜕变石', short: '蜕', color: '#8fa3c8', desc: '普通 → 1 词缀魔法', cost: 'transmute' },
+      { type: 'alteration', name: '改造石', short: '改', color: '#7f9fe8', desc: '重铸魔法词缀（1–2 条）', cost: 'alteration' },
+      { type: 'augmentation', name: '增幅石', short: '增', color: '#9db8e8', desc: '仅魔法：补 1 条，最多 2 条', cost: 'augmentation' },
+      { type: 'regal', name: '富豪石', short: '富', color: '#d8c27a', desc: '仅魔法 → 稀有，加 1 条', cost: 'regal' },
+      { type: 'alchemy', name: '点金石', short: '点', color: '#c9a76a', desc: '普通 → 4 词缀稀有', cost: 'alchemy' },
+      { type: 'chaos', name: '混沌石', short: '混', color: '#b98a5a', desc: '重铸稀有词缀（4–6 条）', cost: 'chaos' },
+      { type: 'exalted', name: '崇高石', short: '崇', color: '#e6cf9a', desc: '稀有补 1 条空位', cost: 'exalted' },
+      { type: 'annulment', name: '剥离石', short: '剥', color: '#9a8f7a', desc: '魔法 / 稀有：移除 1 条非破裂', cost: 'annulment' },
+      { type: 'scour', name: '重铸石', short: '洗', color: '#7a8496', desc: '魔法 / 稀有：清空非破裂', cost: 'scour' },
+      { type: 'divine', name: '神圣石', short: '圣', color: '#e7d8b0', desc: '魔法 / 稀有：重掷数值', cost: 'divine' },
+    ],
     bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags,
     ARMOUR, JEWEL, GEAR,
   };

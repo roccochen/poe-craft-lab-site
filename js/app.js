@@ -89,6 +89,8 @@
       const state = Object.assign(defaultState(), parsed);
       state.settings = Object.assign(baseSettings(), parsed.settings || {});
       state.settings.prices = Object.assign(baseSettings().prices, (parsed.settings && parsed.settings.prices) || {});
+      if (state.settings.prices.lock === 400) state.settings.prices.lock = D.prices.lock;
+      if (state.settings.prices.multimod === 400) state.settings.prices.multimod = D.prices.multimod;
       state.settings.configUrl = baseSettings().configUrl;
       state.settings.cooldownSeconds = runtimeCooldown();
       state.configMeta = parsed.configMeta || null;
@@ -600,7 +602,7 @@
     const ev = E.evaluate(item, currentTargets());
     $('#rarity-label').textContent = E.rarityName(item.rarity) + '物品';
     $('#rarity-label').className = 'rarity-label ' + item.rarity;
-    $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '');
+    $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '') + (item.corrupted ? ' · 已腐化' : '');
     const infNames = item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ');
     const modsHtml = item.affixes.length
       ? '<ul class="item-mod-list">' + item.affixes.map((a) => {
@@ -724,7 +726,7 @@
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
-      essence: '给魔法 / 稀有物品保底一条指定词缀',
+      essence: '普通升级为稀有 / 稀有重铸，保底一条指定词缀',
       fossil: '用化石重铸，适合中级 / 高级玩家',
       harvest: '按标签重铸，适合中级 / 高级玩家',
       bench: '收尾补一条固定工艺词缀',
@@ -745,6 +747,13 @@
     else if (state.item.rarity === 'normal') hint.textContent = hints.normal || '普通物品：先用蜕变石做出魔法，或点金石直接做稀有。';
     else if (state.item.rarity === 'magic') hint.textContent = hints.magic || '魔法物品：增幅补到 2 条；命中目标后用富豪石升稀有。';
     else hint.textContent = hints.rare || '稀有物品：崇高补空位；不要的词缀用混沌或剥离处理。';
+    const stateLine = $('#action-state');
+    if (stateLine) {
+      const ev = E.evaluate(state.item, currentTargets());
+      stateLine.textContent = state.item.rarity === 'normal'
+        ? '普通 · 无词缀' + (state.item.corrupted ? ' · 已腐化' : '')
+        : E.rarityName(state.item.rarity) + ' · 前缀 ' + ev.prefixCount + '/' + E.sideCap(state.item, 'prefix') + ' · 后缀 ' + ev.suffixCount + '/' + E.sideCap(state.item, 'suffix') + ' · 还能加 ' + (ev.openPrefix + ev.openSuffix) + ' 条' + (state.item.corrupted ? ' · 已腐化' : '');
+    }
     const body = $('#action-body');
     if (state.tab === 'basic') renderBasicActions(body);
     else if (state.tab === 'essence') renderEssenceActions(body);
@@ -810,11 +819,15 @@
     });
   }
   function renderFossilActions(body) {
+    if (state.item.rarity !== 'rare') {
+      body.innerHTML = '<div class="action-none">化石只能用于稀有物品。先用点金石 / 富豪石 / 精华做成稀有，再重铸。</div>';
+      return;
+    }
     const prices = priceOverrides();
     const selected = state.fossilSelection;
     const selectedFossils = selected.map((id) => D.fossils.find((f) => f.id === id)).filter(Boolean);
     body.innerHTML =
-      '<div class="form-hint" style="margin-bottom:8px">选择 1–3 枚化石（共鸣器），化石会重铸整件稀有物品。权重会相互叠加。</div>' +
+      '<div class="form-hint" style="margin-bottom:8px">选择 1–4 枚化石（共鸣器），化石会重铸整件稀有物品。权重会相互叠加。</div>' +
       '<div class="fossil-grid">' + D.fossils.map((f) =>
         '<button type="button" class="fossil-chip ' + (selected.indexOf(f.id) !== -1 ? 'selected' : '') + '" data-fossil="' + f.id + '" title="' + esc(f.desc) + '">' +
         esc(f.name) + '<small>' + costText(f.cost) + '</small></button>'
@@ -822,12 +835,14 @@
       '<div class="fossil-bar"><div class="fossil-detail">' +
       (selectedFossils.length ? selectedFossils.map((f) => '<b>' + esc(f.name) + '</b>：' + esc(f.desc)).join('<br>') : '尚未选择化石。单枚化石也会重铸物品，多枚会叠加权重与屏蔽。') +
       '</div><button class="btn gold fossil-apply" id="apply-fossil" type="button" ' + (selected.length ? '' : 'disabled') + '>使用化石 <span style="opacity:.75">' + costText(E.actionCost({ type: 'fossil', fossilIds: selected }, prices)) + '</span></button></div>';
+    const fossilReason = selected.length ? E.fossilAvailability(state.item, selected) : '';
+    if (fossilReason) { const btn = $('#apply-fossil'); if (btn) btn.disabled = true; }
     $$('#action-body [data-fossil]').forEach((b) => {
       b.onclick = () => {
         const id = b.dataset.fossil;
         const idx = state.fossilSelection.indexOf(id);
         if (idx === -1) {
-          if (state.fossilSelection.length >= 3) { toast('最多同时使用 3 枚化石。', 'error'); return; }
+          if (state.fossilSelection.length >= 4) { toast('最多同时使用 4 枚化石。', 'error'); return; }
           state.fossilSelection.push(id);
         } else {
           state.fossilSelection.splice(idx, 1);
@@ -845,6 +860,10 @@
     };
   }
   function renderHarvestActions(body) {
+    if (state.item.rarity !== 'rare') {
+      body.innerHTML = '<div class="action-none">庄园重铸只能用于稀有物品。</div>';
+      return;
+    }
     const prices = priceOverrides();
     body.innerHTML =
       '<div class="form-hint" style="margin-bottom:8px">庄园重铸会重铸稀有物品，并保证至少一条所选标签的词缀。适合补指定标签，不适合保词缀。</div>' +
@@ -887,6 +906,10 @@
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
   }
   function renderBenchActions(body) {
+    if (state.item.rarity !== 'rare') {
+      body.innerHTML = '<div class="action-none">工艺台只能用于稀有物品。</div>';
+      return;
+    }
     const options = E.benchOptions(state.item);
     const prices = priceOverrides();
     let html = '';
@@ -903,7 +926,7 @@
     const rare = state.item.rarity === 'rare';
     const canLockPrefix = rare && E.sides(state.item, 'prefix').length > 0;
     const canLockSuffix = rare && E.sides(state.item, 'suffix').length > 0;
-    html += '<div class="form-hint" style="margin-top:12px;margin-bottom:6px">meta 工艺（价格按 2 神圣估算，可在设置中调整）</div>' +
+    html += '<div class="form-hint" style="margin-top:12px;margin-bottom:6px">meta 工艺（按 2 崇高估算，可在价格数据中调整）</div>' +
       '<div class="lock-grid">' +
       '<div class="lock-card"><h4>保护前缀</h4><p>锁住前缀，只处理后缀。适合前缀已经完成的情况。</p>' +
       '<div class="lock-btns"><button class="btn tiny" data-lock="prefix" data-method="chaos" ' + (canLockPrefix ? '' : 'disabled') + '>锁前 + 混沌</button>' +
@@ -914,7 +937,7 @@
       '</div>' +
       '<div class="fossil-bar" style="margin-top:9px"><div class="fossil-detail">' +
       (state.item.meta && state.item.meta.multimod ? '已拥有多重工艺。' : '多重工艺允许最多 3 条工艺词缀，适合最后收尾。') +
-      '</div><button class="btn tiny" id="btn-multimod" ' + (rare && !(state.item.meta && state.item.meta.multimod) ? '' : 'disabled') + '>多重工艺 ' + costText(prices.multimod || 400) + '</button></div>';
+      '</div><button class="btn tiny" id="btn-multimod" ' + (rare && !(state.item.meta && state.item.meta.multimod) ? '' : 'disabled') + '>多重工艺 ' + costText(prices.multimod || 36) + '</button></div>';
     body.innerHTML = html;
     $$('#action-body [data-bench]').forEach((b) => {
       b.onclick = () => performAction({ type: 'bench', benchId: b.dataset.bench });
@@ -1379,6 +1402,7 @@
         '<div class="form-row"><label>前缀 / 后缀</label><div style="font-size:11px;color:var(--muted);padding-top:6px">' + pCount + ' / 3 前缀 · ' + sCount + ' / 3 后缀</div></div>' +
         '</div>' +
         '<label class="manual-check"><input type="checkbox" id="manual-multimod" ' + (draft.meta.multimod ? 'checked' : '') + '> 已有多重工艺（允许 3 条工艺词缀）</label>' +
+        '<label class="manual-check"><input type="checkbox" id="manual-corrupted" ' + (draft.corrupted ? 'checked' : '') + '> 物品已腐化（不能使用普通通货）</label>' +
         '<div class="manual-section"><h4>当前词缀</h4><div class="manual-mods">' + (affixes || '<div class="empty-manual">没有词缀。</div>') + '</div></div>' +
         '<div class="manual-section"><h4>添加词缀</h4>' +
         '<div class="tabs tiny" style="margin-bottom:6px">' +
@@ -1391,6 +1415,7 @@
       openModal(html);
       $('#manual-rarity').onchange = (e) => { draft.rarity = e.target.value; render(); };
       $('#manual-multimod').onchange = (e) => { draft.meta.multimod = e.target.checked; render(); };
+      $('#manual-corrupted').onchange = (e) => { draft.corrupted = e.target.checked; render(); };
       $$('#modal-root [data-close]').forEach((b) => { b.onclick = closeModal; });
       $$('#modal-root [data-mside]').forEach((b) => {
         b.onclick = () => { manualSide = b.dataset.mside; render(); };

@@ -83,6 +83,7 @@
       rarity: opts.rarity || 'normal',
       affixes: opts.affixes || [],
       quality: opts.quality || 0,
+      corrupted: !!opts.corrupted,
       meta: { multimod: false },
     };
   }
@@ -196,6 +197,8 @@
       tierIlvl: tier.ilvl,
       values,
       text: formatText(opts.text || mod.text, values),
+      template: opts.text || mod.text,
+      ranges: tier.v.map((r) => r.slice()),
       tags: (opts.tags || mod.tags || []).slice(),
       crafted: !!opts.crafted,
       fractured: !!opts.fractured,
@@ -218,6 +221,8 @@
       tierIlvl: opts.tierIlvl || 1,
       values,
       text: formatText(desc.text, values),
+      template: desc.text,
+      ranges: desc.v.map((r) => r.slice()),
       tags: (desc.tags || []).slice(),
       crafted: !!opts.crafted,
       fractured: !!opts.fractured,
@@ -384,6 +389,7 @@
       case 'exalted': return prices.exalted;
       case 'annulment': return prices.annulment;
       case 'scour': return prices.scour;
+      case 'divine': return prices.divine;
       case 'essence': {
         const e = essenceById[action.essenceId];
         return e ? e.cost * (prices.essenceMult || 1) : 0;
@@ -408,7 +414,8 @@
 
   function validBench(item, craft) {
     const base = getBase(item.baseId);
-    if (item.rarity !== 'rare' && item.rarity !== 'magic') return false;
+    if (item.corrupted) return false;
+    if (item.rarity !== 'rare') return false;
     if (craft.slots && craft.slots.indexOf(base.slot) === -1) return false;
     if (craft.def) {
       const defs = baseDefenceTags(base);
@@ -438,6 +445,101 @@
     return rand(rng) < 0.5 ? 1 : 2;
   }
 
+  function normalizeRarity(item) {
+    if (!item.affixes || !item.affixes.length) {
+      item.rarity = 'normal';
+      return;
+    }
+    if (item.rarity === 'normal') {
+      item.rarity = item.affixes.length <= 2 ? 'magic' : 'rare';
+    } else if (item.rarity === 'magic' && item.affixes.length > 2) {
+      item.rarity = 'rare';
+    }
+  }
+  function rerollAffixValues(affix, rng) {
+    if (!affix || affix.crafted || affix.benchId) return false;
+    let ranges = affix.ranges;
+    let template = affix.template;
+    if (!ranges) {
+      const mod = modById[affix.modId];
+      if (mod) {
+        const tier = (mod.tiers || []).find((t) => tierRank(mod, t) === affix.tierRank)
+          || (mod.tiers || []).find((t) => t.ilvl === affix.tierIlvl);
+        if (tier) {
+          ranges = tier.v;
+          template = template || mod.text;
+        }
+      }
+    }
+    if (!ranges || !ranges.length) return false;
+    affix.values = ranges.map((range) => roundVal(randFloat(rng, range[0], range[1])));
+    if (template) affix.text = formatText(template, affix.values);
+    return true;
+  }
+  function canUseOn(item, type) {
+    if (item.corrupted && type !== 'vaal') return '物品已腐化，不能使用普通通货。';
+    return null;
+  }
+  function actionAvailability(item, type) {
+    const blocked = canUseOn(item, type);
+    if (blocked) return blocked;
+    const space = canAdd(item, 'prefix') || canAdd(item, 'suffix');
+    const removable = item.affixes.some((a) => !a.fractured);
+    switch (type) {
+      case 'transmute': return item.rarity === 'normal' ? null : '蜕变石只能用于普通物品';
+      case 'alteration': return item.rarity === 'magic' ? null : '改造石只能用于魔法物品';
+      case 'augmentation':
+        if (item.rarity !== 'magic') return '增幅石只能用于魔法物品';
+        return space ? null : '魔法词缀已满（最多 1 前缀 + 1 后缀）';
+      case 'regal': return item.rarity === 'magic' ? null : '富豪石只能用于魔法物品';
+      case 'alchemy': return item.rarity === 'normal' ? null : '点金石只能用于普通物品';
+      case 'chaos': return item.rarity === 'rare' ? null : '混沌石只能重铸稀有物品';
+      case 'exalted':
+        if (item.rarity !== 'rare') return '崇高石只能用于稀有物品';
+        return space ? null : '词缀已满，没有空余前缀或后缀';
+      case 'annulment':
+        if (item.rarity !== 'magic' && item.rarity !== 'rare') return '剥离石只能用于魔法或稀有物品';
+        return removable ? null : '没有可剥离的非破裂词缀';
+      case 'scour':
+        if (item.rarity !== 'magic' && item.rarity !== 'rare') return '重铸石只能用于魔法或稀有物品';
+        return removable ? null : '只有破裂词缀，无法重铸';
+      case 'divine':
+        if (item.rarity !== 'magic' && item.rarity !== 'rare') return '神圣石只能用于魔法或稀有物品';
+        return item.affixes.length ? null : '没有可重掷数值的词缀';
+      case 'vaal': return item.corrupted ? '物品已经腐化' : null;
+      case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
+      case 'multimod': return item.rarity === 'rare' ? null : '多重工艺只能用于稀有物品';
+      case 'lock_chaos':
+      case 'lock_scour':
+      case 'lock_exalt': return item.rarity === 'rare' ? null : '该 meta 组合只能用于稀有物品';
+      case 'essence': return (item.rarity === 'normal' || item.rarity === 'rare') ? null : '精华只能用于普通或稀有物品';
+      case 'fossil': return item.rarity === 'rare' ? null : '化石只能用于稀有物品';
+      case 'harvest': return item.rarity === 'rare' ? null : '庄园重铸只能用于稀有物品';
+      default: return '未知操作';
+    }
+  }
+  function essenceAvailability(item, essence) {
+    if (!essence) return '未知精华。';
+    if (item.corrupted) return '物品已腐化，不能使用精华。';
+    if (item.rarity !== 'normal' && item.rarity !== 'rare') return '精华只能用于普通或稀有物品。';
+    const slot = getBase(item.baseId).slot;
+    const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
+      : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
+    const desc = (essence.bySlot && essence.bySlot[slot]) || (essence.byCat && essence.byCat[cat]);
+    return desc ? null : '该精华不支持此物品。';
+  }
+  function fossilAvailability(item, ids) {
+    if (item.corrupted) return '物品已腐化，不能使用化石。';
+    if (item.rarity !== 'rare') return '化石只能用于稀有物品。';
+    if (!ids || !ids.length) return '请至少选择一枚化石。';
+    return null;
+  }
+  function harvestAvailability(item, tag) {
+    if (item.corrupted) return '物品已腐化，不能使用庄园。';
+    if (item.rarity !== 'rare') return '庄园重铸只能用于稀有物品。';
+    if (!tag) return '请选择庄园标签。';
+    return null;
+  }
   function applyAction(item, action, ctx) {
     ctx = ctx || {};
     const rng = ctx.rng || defaultRng;
@@ -446,6 +548,7 @@
     next.meta = next.meta || { multimod: false };
     const cost = actionCost(action, prices);
     const fail = (msg) => ({ error: msg, item: next, cost: 0, message: '' });
+    if (next.corrupted && action.type !== 'vaal') return fail('物品已腐化，不能使用普通通货。');
     let message = '';
 
     switch (action.type) {
@@ -465,7 +568,7 @@
         break;
       }
       case 'augmentation': {
-        if (next.rarity !== 'magic' && next.rarity !== 'rare') return fail('增幅石只能用于魔法或稀有物品。');
+        if (next.rarity !== 'magic') return fail('增幅石只能用于魔法物品。');
         if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('词缀已满，无法使用增幅石。');
         const side = chooseSide(next, rng);
         addRandomAffix(next, side, rng, {});
@@ -509,51 +612,49 @@
         if (!removable.length) return fail('没有可剥离的词缀（破裂词缀无法剥离）。');
         const victim = removable[randInt(rng, 0, removable.length - 1)];
         next.affixes = next.affixes.filter((a) => a !== victim);
+        normalizeRarity(next);
         message = '使用剥离石：移除了「' + victim.text.split('\n')[0] + '」。';
         break;
       }
       case 'scour': {
         if (next.rarity !== 'rare' && next.rarity !== 'magic') return fail('重铸石只能用于魔法或稀有物品。');
-        next.rarity = 'normal';
         next.affixes = next.affixes.filter((a) => a.fractured);
+        normalizeRarity(next);
+        if (next.rarity !== 'normal') next.rarity = 'rare';
         message = '使用重铸石：清除词缀。';
         break;
       }
+      case 'divine': {
+        if (next.rarity !== 'magic' && next.rarity !== 'rare') return fail('神圣石只能用于魔法或稀有物品。');
+        if (!next.affixes.length) return fail('没有可重掷数值的词缀。');
+        let changed = 0;
+        next.affixes.forEach((a) => { if (rerollAffixValues(a, rng)) changed++; });
+        if (!changed) return fail('没有可重掷数值的词缀（工艺词缀数值固定）。');
+        message = '使用神圣石：重掷了 ' + changed + ' 条词缀的数值，词缀和品级不变。';
+        break;
+      }
       case 'essence': {
-        if (next.rarity === 'magic' || next.rarity === 'normal') {
-          const e = essenceById[action.essenceId];
-          if (!e) return fail('未知精华。');
-          const slot = getBase(next.baseId).slot;
-          const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
-            : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
-          const desc = (e.bySlot && e.bySlot[slot]) || e.byCat[cat];
-          if (!desc) return fail('该精华不支持此物品。');
-          next.rarity = 'rare';
-          clearForReroll(next, []);
-          const aff = makeCustomAffix(desc, rng, { essence: true, modId: 'essence_' + e.id, name: e.name + '精华' });
-          next.affixes.push(aff);
-          fillTo(next, next.affixes.length > 4 ? next.affixes.length : 4, rng, {});
-          message = '使用' + e.tierName + e.name + '精华：保底「' + aff.text.split('\n')[0] + '」。';
-        } else if (next.rarity === 'rare') {
-          const e = essenceById[action.essenceId];
-          if (!e) return fail('未知精华。');
-          const slot = getBase(next.baseId).slot;
-          const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
-            : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
-          const desc = (e.bySlot && e.bySlot[slot]) || e.byCat[cat];
-          if (!desc) return fail('该精华不支持此物品。');
-          clearForReroll(next, []);
-          const aff = makeCustomAffix(desc, rng, { essence: true, modId: 'essence_' + e.id, name: e.name + '精华' });
-          next.affixes.push(aff);
-          fillTo(next, rollRareCount(rng), rng, {});
-          message = '使用' + e.tierName + e.name + '精华重铸：保底「' + aff.text.split('\n')[0] + '」。';
-        } else {
-          return fail('精华只能用于普通或稀有物品。');
-        }
+        const e = essenceById[action.essenceId];
+        if (!e) return fail('未知精华。');
+        const blockReason = essenceAvailability(next, e);
+        if (blockReason) return fail(blockReason);
+        const slot = getBase(next.baseId).slot;
+        const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
+          : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
+        const desc = (e.bySlot && e.bySlot[slot]) || (e.byCat && e.byCat[cat]);
+        const wasRare = next.rarity === 'rare';
+        next.rarity = 'rare';
+        clearForReroll(next, []);
+        if (!canAdd(next, desc.affix)) return fail('精华保底词缀所在的一侧已满。');
+        if (existingGroups(next)[desc.group]) return fail('已有同组词缀，无法加入精华保底。');
+        const aff = makeCustomAffix(desc, rng, { essence: true, modId: 'essence_' + e.id, name: e.name + '精华' });
+        next.affixes.push(aff);
+        fillTo(next, wasRare ? rollRareCount(rng) : 4, rng, {});
+        message = '使用' + e.tierName + e.name + '精华：' + (wasRare ? '重铸稀有词缀，' : '升级为稀有物品，') + '保底「' + aff.text.split('\n')[0] + '」。';
         break;
       }
       case 'fossil': {
-        if (next.rarity !== 'normal' && next.rarity !== 'rare') return fail('化石只能用于普通或稀有物品。');
+        if (next.rarity !== 'rare') return fail('化石只能用于稀有物品。');
         const fossils = (action.fossilIds || []).map((id) => fossilById[id]).filter(Boolean);
         if (!fossils.length) return fail('请至少选择一枚化石。');
         clearForReroll(next, []);
@@ -571,7 +672,7 @@
         break;
       }
       case 'bench': {
-        if (next.rarity !== 'rare' && next.rarity !== 'magic') return fail('工艺台只能用于魔法或稀有物品。');
+        if (next.rarity !== 'rare') return fail('工艺台只能用于稀有物品。');
         const craft = benchById[action.benchId];
         if (!craft) return fail('未知工艺。');
         if (!validBench(next, craft)) return fail('无法添加该工艺：槽位不足、已有同组词缀或工艺上限。');
@@ -639,6 +740,7 @@
     const base = getBase(item.baseId);
     const lines = [];
     lines.push(rarityName(item.rarity) + '物品');
+    if (item.corrupted) lines.push('已腐化');
     lines.push(base.name + ' (' + base.en + ')');
     lines.push('--------');
     lines.push('物品等级: ' + item.ilvl);
@@ -773,7 +875,8 @@
   const api = {
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
-    eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, mergePrices,
+    eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
+    essenceAvailability, fossilAvailability, harvestAvailability,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

@@ -364,8 +364,8 @@
       if (ev.matchedCount > 0) push({ type: 'scour' }, { bonus: -6 });
     }
 
-    // 精华 / 化石：魔法物品不能使用
-    if (item.rarity !== 'magic') {
+    // 精华：普通 / 稀有；化石：仅稀有
+    if (item.rarity === 'normal' || item.rarity === 'rare') {
     const essences = D.essences
       .map((e) => ({ e, fit: essenceFit(e, item, targets) }))
       .filter((x) => x.fit > 0)
@@ -384,19 +384,19 @@
     });
 
     // 化石
-    const fossils = D.fossils
+    const fossils = item.rarity === 'rare' ? (D.fossils
       .map((f) => ({ f, fit: fossilFit(f, item, targets) }))
       .filter((x) => x.fit > 0)
       .sort((a, b) => b.fit - a.fit)
-      .slice(0, 3);
+      .slice(0, 3)) : [];
     fossils.forEach(({ f, fit }) => {
       push({ type: 'fossil', fossilIds: [f.id] }, {
         bonus: 4 + fit, fit,
         fitText: f.desc + '。',
-        warning: item.rarity === 'normal' ? '化石会把普通物品做成稀有物品。' : '会重铸所有非破裂词缀。',
+        warning: '会重铸所有非破裂词缀，并保留破裂词缀。',
       });
     });
-    if (item.rarity === 'normal' || item.rarity === 'rare') {
+    if (item.rarity === 'rare') {
       const comboIds = fossilComboForTargets(targets);
       if (comboIds && comboIds.length > 1) {
         const comboFossils = comboIds.map((id) => FOSSIL_BY_ID[id]).filter(Boolean);
@@ -428,7 +428,7 @@
     }
 
     // 工艺台
-    if (item.rarity === 'rare' || item.rarity === 'magic') {
+    if (item.rarity === 'rare') {
       const benchPick = chooseBench(item, targets, ev);
       if (benchPick) {
         push({ type: 'bench', benchId: benchPick.id }, {
@@ -451,7 +451,7 @@
           push({ type: 'lock_chaos', side: 'prefix' }, {
             bonus: 28, kind: 'lock',
             fitText: '前缀目标已经完成，锁前缀重铸后缀不会破坏现有前缀。',
-            warning: '会消耗 2 神圣级 meta 工艺 + 混沌石，并重铸后缀。',
+            warning: '会消耗 2 崇高 meta 工艺 + 混沌石，并重铸后缀。',
           });
         } else {
           push({ type: 'lock_scour', side: 'prefix' }, {
@@ -466,7 +466,7 @@
           push({ type: 'lock_chaos', side: 'suffix' }, {
             bonus: 28, kind: 'lock',
             fitText: '后缀目标已经完成，锁后缀重铸前缀不会破坏现有后缀。',
-            warning: '会消耗 2 神圣级 meta 工艺 + 混沌石，并重铸前缀。',
+            warning: '会消耗 2 崇高 meta 工艺 + 混沌石，并重铸前缀。',
           });
         } else {
           push({ type: 'lock_scour', side: 'suffix' }, {

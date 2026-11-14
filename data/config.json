@@ -1,7 +1,8 @@
 {
   "schema": 1,
-  "version": "2026.11.14-1",
-  "updatedAt": "2026-11-13T16:06:48.459Z",
+  "dataVersion": "1.0.1",
+  "version": "2026.11.14-2",
+  "updatedAt": "2026-11-14T06:50:13.792Z",
   "source": "built-in",
   "prices": {
     "transmute": 0.1,
@@ -17,8 +18,8 @@
     "divine": 200,
     "resonator": 1,
     "harvest": 15,
-    "lock": 400,
-    "multimod": 400,
+    "lock": 36,
+    "multimod": 36,
     "essenceMult": 1,
     "fossilMult": 1,
     "essence": 1
@@ -80,6 +81,5 @@
   },
   "settings": {
     "samples": 160
-  },
-  "dataVersion": "1.0.0"
+  }
 }
