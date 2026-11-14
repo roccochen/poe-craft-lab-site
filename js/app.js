@@ -910,6 +910,7 @@
     if (type === 'awakener') return '势力合成';
     if (type === 'aisling' || type === 'unveil') return '隐秘';
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
+    if (type === 'influence_exalt') return '势力';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -947,7 +948,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'influence', name: '势力崇高' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -958,6 +959,7 @@
       awakener: '双势力合成：保留目标与祭品各一条影响词缀',
       aisling: '添加 / 揭露隐秘词缀',
       eldritch: '灼热 / 吞噬 Eldritch 基底',
+      influence: '给稀有物品添加势力影响与势力词缀',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -989,6 +991,7 @@
     else if (state.tab === 'harvest') renderHarvestActions(body);
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
+    else if (state.tab === 'influence') renderInfluenceActions(body);
     else if (state.tab === 'aisling') renderAislingActions(body);
     else if (state.tab === 'eldritch') renderEldritchActions(body);
     else if (state.tab === 'awakener') renderAwakenerActions(body);
@@ -1150,6 +1153,26 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderInfluenceActions(body) {
+    const item = state.item;
+    if (item.rarity !== 'rare') {
+      body.innerHTML = '<div class="action-none">势力崇高石只能用于稀有物品。</div>';
+      return;
+    }
+    const prices = priceOverrides();
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">势力崇高石会给稀有物品添加 1 个势力影响，并随机获得 1 条该势力词缀。最多 2 个势力。</div>' +
+      '<div class="action-grid">' + D.influenceOrbs.map((o) => {
+        const reason = E.influenceAvailability(item, o.influence);
+        const inf = D.influences.find((x) => x.id === o.influence);
+        return '<button class="action-btn ' + (reason ? 'unavailable' : '') + '" type="button" data-influence-orb="' + o.id + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' +
+          '<span class="orb" style="--orb:' + (inf ? inf.color : '#aaa') + '">' + (inf ? inf.name[0] : '?') + '</span>' +
+          '<span class="action-info"><span class="action-name">' + esc(o.name) + '</span><span class="action-desc">' + esc(reason || '添加' + (inf ? inf.name : '') + '影响 + 1 条势力词缀') + '</span></span>' +
+          '<span class="action-cost"><b>' + costText(prices.influenceExalt || 90) + '</b></span></button>';
+      }).join('') + '</div>';
+    $$('#action-body [data-influence-orb]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: 'influence_exalt', influence: b.dataset.influenceOrb.replace('_exalt', '') });
+    });
   }
   function renderEldritchActions(body) {
     const item = state.item;
@@ -2127,7 +2150,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length

@@ -884,7 +884,7 @@
   const prices = {
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
-    divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, scrap: 0.1, whetstone: 0.1,
+    divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, influenceExalt: 90, scrap: 0.1, whetstone: 0.1,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50, orbConflict: 80,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
@@ -1074,6 +1074,15 @@
     },
   };
 
+  const influenceOrbs = [
+    { id: 'shaper_exalt', name: '塑界者崇高石', influence: 'shaper' },
+    { id: 'elder_exalt', name: '裂界者崇高石', influence: 'elder' },
+    { id: 'crusader_exalt', name: '圣战者崇高石', influence: 'crusader' },
+    { id: 'redeemer_exalt', name: '救赎者崇高石', influence: 'redeemer' },
+    { id: 'hunter_exalt', name: '狩猎者崇高石', influence: 'hunter' },
+    { id: 'warlord_exalt', name: '督军崇高石', influence: 'warlord' },
+  ];
+
   const data = {
     version: '1.0.1',
     configMode: 'static',
@@ -1093,7 +1102,7 @@
       { type: 'scrap', name: '护甲片', short: '片', color: '#a9b3c2', desc: '护甲 / 盾：品质 +1~5%，最高 20%', cost: 'scrap' },
       { type: 'whetstone', name: '磨刀石', short: '磨', color: '#b8a58a', desc: '武器：品质 +1~5%，最高 20%', cost: 'whetstone' },
     ],
-    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits,
+    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits, influenceOrbs,
     ARMOUR, JEWEL, GEAR,
   };
 

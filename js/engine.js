@@ -70,6 +70,8 @@
   const veilById = {};
   D.veiledMods.forEach((m) => { veilById[m.id] = m; });
   const AWAKENER_ORDER = ['shaper', 'elder', 'crusader', 'redeemer', 'hunter', 'warlord'];
+  const influenceOrbById = {};
+  D.influenceOrbs.forEach((o) => { influenceOrbById[o.id] = o; });
   const fossilById = {};
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
   const targetById = Object.assign({}, modById, benchById);
@@ -205,6 +207,7 @@
       if (groups[mod.group]) continue;
       if (!modEligibleOnBase(mod, base, item)) continue;
       if (opts.onlyTag && mod.tags.indexOf(opts.onlyTag) === -1) continue;
+      if (opts.influence && mod.influence !== opts.influence) continue;
       const tiers = eligibleTiers(mod, item.ilvl);
       if (!tiers.length) continue;
       let w = mod.weight;
@@ -447,6 +450,7 @@
       case 'aisling': return prices.aisling || 160;
       case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
       case 'orb_conflict': return prices.orbConflict || 80;
+      case 'influence_exalt': return prices.influenceExalt || 90;
       case 'unveil': return 0;
       case 'awakener': return prices.awakener || 120;
       case 'essence': {
@@ -578,6 +582,7 @@
       case 'aisling': return item.rarity === 'rare' ? null : '爱斯琳只能用于稀有物品';
       case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
       case 'orb_conflict': return orbConflictAvailability(item);
+      case 'influence_exalt': return influenceAvailability(item, action.influence);
       case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
       case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
@@ -656,6 +661,18 @@
     };
     item.affixes.push(aff);
     return aff;
+  }
+  function influenceAvailability(item, influenceId) {
+    if (item.corrupted) return '物品已腐化，不能使用势力崇高石。';
+    if (item.rarity !== 'rare') return '势力崇高石只能用于稀有物品。';
+    if (item.eldritch && (item.eldritch.exarch || item.eldritch.eater)) return '有 Eldritch 基底的物品不能获得势力影响。';
+    if (!AWAKENER_ORDER.includes(influenceId)) return '未知势力。';
+    if ((item.influences || []).includes(influenceId)) return '该势力已经存在。';
+    if ((item.influences || []).length >= 2) return '最多只能有 2 个势力影响。';
+    const temp = clone(item);
+    temp.influences = (item.influences || []).concat([influenceId]);
+    const sides = ['prefix', 'suffix'].filter((side) => canAdd(temp, side) && candidatesFor(temp, side, { influence: influenceId }).length);
+    return sides.length ? null : '没有空位或该势力没有可用词缀。';
   }
   function qualityAvailability(item, type) {
     if (item.corrupted) return '物品已腐化，不能提升品质。';
@@ -1031,6 +1048,18 @@
         message = 'Orb of Conflict：' + (raiseKind === 'exarch' ? '灼热' : '吞噬') + ' 提升到 ' + next.eldritch[raiseKind].tierName + '，' + (lowerKind === 'exarch' ? '灼热' : '吞噬') + (next.eldritch[lowerKind] ? ' 降低到 ' + next.eldritch[lowerKind].tierName : ' 被移除') + '。';
         break;
       }
+      case 'influence_exalt': {
+        const reason = influenceAvailability(next, action.influence);
+        if (reason) return fail(reason);
+        next.influences = (next.influences || []).concat([action.influence]);
+        next.influences = AWAKENER_ORDER.filter((id) => next.influences.includes(id));
+        const sides = ['prefix', 'suffix'].filter((side) => canAdd(next, side) && candidatesFor(next, side, { influence: action.influence }).length);
+        const side = sides[randInt(rng, 0, sides.length - 1)];
+        const aff = addRandomAffix(next, side, rng, { influence: action.influence });
+        if (!aff) return fail('没有可添加的势力词缀。');
+        message = '势力崇高石：添加' + (action.influence === 'shaper' ? '塑界者' : action.influence === 'elder' ? '裂界者' : action.influence === 'crusader' ? '圣战者' : action.influence === 'redeemer' ? '救赎者' : action.influence === 'hunter' ? '狩猎者' : '督军') + '影响，并获得「' + aff.text.split('\n')[0] + '」。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1296,7 +1325,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
