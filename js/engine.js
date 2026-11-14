@@ -471,6 +471,7 @@
       case 'influence_exalt': return prices.influenceExalt || 90;
       case 'bench_remove': return prices.scour;
       case 'veiled_chaos': return prices.veiledChaos || 6;
+      case 'recombine': return prices.recombine || 100;
       case 'jeweller': return prices.jeweller;
       case 'fusing': return prices.fusing;
       case 'chromatic': return prices.chromatic;
@@ -612,6 +613,7 @@
       case 'influence_exalt': return influenceAvailability(item, action.influence);
       case 'bench_remove': return benchRemoveAvailability(item);
       case 'veiled_chaos': return veiledChaosAvailability(item);
+      case 'recombine': return recombineAvailability(item, action.donor);
       case 'jeweller':
       case 'fusing':
       case 'chromatic': return socketAvailability(item, type);
@@ -704,6 +706,14 @@
       return item.rarity === 'magic' || item.rarity === 'rare' ? null : '只能用于魔法或稀有物品。';
     }
     return item.rarity === 'rare' ? null : 'Tainted 重铸 / 崇高只能用于稀有物品。';
+  }
+  function recombineAvailability(item, donor) {
+    if (!donor) return '请先在祭品仓库选择一件祭品。';
+    if (item.corrupted || donor.corrupted) return '腐化物品不能重组。';
+    if (item.rarity !== 'rare' || donor.rarity !== 'rare') return '双方都必须是稀有物品。';
+    if (getBase(item.baseId).slot !== getBase(donor.baseId).slot) return '双方必须是同一部位。';
+    if (!item.affixes.length && !donor.affixes.length) return '双方都没有词缀。';
+    return null;
   }
   function influenceAvailability(item, influenceId) {
     if (item.corrupted) return '物品已腐化，不能使用势力崇高石。';
@@ -1237,6 +1247,38 @@
         message = '链结石：重掷了插槽连接（' + linked + ' 条连接）。';
         break;
       }
+      case 'recombine': {
+        const donor = action.donor;
+        const reason = recombineAvailability(next, donor);
+        if (reason) return fail(reason);
+        const pool = [];
+        const seen = {};
+        next.affixes.concat(donor.affixes).forEach((a) => {
+          if (!a.group || seen[a.group]) return;
+          seen[a.group] = true;
+          pool.push(a);
+        });
+        const chosen = [];
+        const counts = { prefix: 0, suffix: 0 };
+        const shuffled = pool.slice();
+        for (let i = shuffled.length - 1; i > 0; i--) { const j = randInt(rng, 0, i); const t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t; }
+        shuffled.forEach((a) => {
+          if (chosen.length >= 6) return;
+          const side = a.affix === 'suffix' ? 'suffix' : 'prefix';
+          if (counts[side] >= 3) return;
+          chosen.push(a);
+          counts[side]++;
+        });
+        const result = createItem(next.baseId, { ilvl: Math.max(next.ilvl, donor.ilvl), influences: next.influences, rarity: 'rare' });
+        result.affixes = chosen.map((a) => clone(a));
+        result.quality = next.quality || 0;
+        result.sockets = (next.sockets || []).slice();
+        result.links = (next.links || []).slice();
+        Object.keys(next).forEach((k) => { if (!(k in result)) result[k] = next[k]; });
+        Object.keys(result).forEach((k) => { next[k] = result[k]; });
+        message = '重组器：从双方词缀池随机组合出 ' + next.affixes.length + ' 条词缀。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1503,7 +1545,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, recombineAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

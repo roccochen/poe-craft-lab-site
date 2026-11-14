@@ -25,7 +25,8 @@
     "essence": 1,
     "jeweller": 0.5,
     "fusing": 0.5,
-    "chromatic": 0.2
+    "chromatic": 0.2,
+    "recombine": 100
   },
   "essences": {
     "greed": 4,

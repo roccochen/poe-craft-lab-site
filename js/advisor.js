@@ -118,6 +118,7 @@
       case 'jeweller': return '珠宝匠的宝珠';
       case 'fusing': return '链结石';
       case 'chromatic': return '幻色石';
+      case 'recombine': return '重组器';
       case 'unveil': return '揭露隐秘词缀';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
@@ -175,6 +176,7 @@
       case 'jeweller': return '增加 1 个插槽。';
       case 'fusing': return '重掷插槽连接。';
       case 'chromatic': return '重掷所有非白孔颜色。';
+      case 'recombine': return '从目标与祭品的词缀池随机组合。';
       case 'unveil': return '从 3 个隐秘选项中选择 1 条，替换待揭露词缀。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];

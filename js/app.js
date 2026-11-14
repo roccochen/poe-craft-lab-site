@@ -982,6 +982,7 @@
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
     if (type === 'jeweller' || type === 'fusing' || type === 'chromatic') return '插槽';
+    if (type === 'recombine') return '重组';
     if (type.indexOf('tainted_') === 0) return 'Tainted';
     if (type === 'bench' || type === 'multimod' || type === 'bench_remove') return '收尾';
     return '操作';
@@ -1020,7 +1021,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'sockets', name: '插槽' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'sockets', name: '插槽' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' }, { id: 'recombine', name: '重组器' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -1034,6 +1035,7 @@
       influence: '给稀有物品添加势力影响与势力词缀',
       tainted: '腐化后才能使用的 Tainted 通货',
       sockets: '插槽数量 / 连接 / 颜色',
+      recombine: '从两件稀有装备随机重组词缀',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -1071,6 +1073,7 @@
     else if (state.tab === 'aisling') renderAislingActions(body);
     else if (state.tab === 'eldritch') renderEldritchActions(body);
     else if (state.tab === 'awakener') renderAwakenerActions(body);
+    else if (state.tab === 'recombine') renderRecombineActions(body);
     else renderBenchActions(body);
   }
   function renderBasicActions(body) {
@@ -1430,6 +1433,24 @@
       b.onclick = () => chooseTool({ type: 'awakener', donorInfluence: b.dataset.awakenerInf, donorModId: b.dataset.awakenerMod });
     });
   }
+  function renderRecombineActions(body) {
+    const item = state.item;
+    const prices = priceOverrides();
+    if (!state.donors.length) {
+      body.innerHTML = '<div class="action-none">先在「势力合成」保存至少 1 件祭品，再回来重组。</div>';
+      return;
+    }
+    const donor = state.donor;
+    const reason = donor ? E.recombineAvailability(item, donor) : '请从仓库选择一件祭品。';
+    body.innerHTML = '<div class="awakener-note"><b>重组器 · 简化版</b><p>从目标与祭品的词缀池随机组合，结果最多 6 条；会消耗祭品。当前为简化模拟，不是完整重组概率表。</p></div>' +
+      '<div class="donor-chips" style="margin-bottom:8px">' + state.donors.map((d, i) => '<button type="button" class="donor-chip ' + (donor && donor.savedAt === d.savedAt ? 'active' : '') + '" data-recombine-pick="' + i + '">' + esc((E.getBase(d.baseId) || {}).name || d.baseId) + '</button>').join('') + '</div>' +
+      (reason ? '<div class="action-none">' + esc(reason) + '</div>' : '<button class="btn gold" type="button" id="btn-recombine">重组 · ' + costText(prices.recombine || 100) + '</button>');
+    $('#action-body [data-recombine-pick]').forEach((b) => {
+      b.onclick = () => { state.donor = state.donors[Number(b.dataset.recombinePick)] || null; renderActionBody(); };
+    });
+    const btn = $('#btn-recombine');
+    if (btn) btn.onclick = () => chooseTool({ type: 'recombine', donor: E.clone(donor) });
+  }
   function renderBenchActions(body) {
     if (state.item.rarity !== 'rare') {
       body.innerHTML = '<div class="action-none">工艺台只能用于稀有物品。</div>';
@@ -1519,7 +1540,7 @@
     });
     if (state.history.length > 40) state.history.shift();
     state.item = res.item;
-    if (action.type === 'awakener') { state.donors = state.donors.filter((d) => !state.donor || d.savedAt !== state.donor.savedAt); state.donor = null; }
+    if (action.type === 'awakener' || action.type === 'recombine') { state.donors = state.donors.filter((d) => !state.donor || d.savedAt !== state.donor.savedAt); state.donor = null; }
     state.spent += res.cost;
     state.attempts++;
     state.routeStats = null;
@@ -2290,7 +2311,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['recombine', '重组器'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length

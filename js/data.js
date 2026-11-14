@@ -887,6 +887,7 @@
     taintedChaos: 4, taintedExalted: 25, taintedDivine: 40, taintedAnnul: 8,
     divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, influenceExalt: 90, scrap: 0.1, whetstone: 0.1,
     jeweller: 0.5, fusing: 0.5, chromatic: 0.2,
+    recombine: 100,
     veiledChaos: 6,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50, orbConflict: 80,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
