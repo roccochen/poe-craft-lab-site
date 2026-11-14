@@ -1244,6 +1244,109 @@
     },
   ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
 
+  [
+    {
+      id: 'contempt_4', name: '蔑视', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#d89a7a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'reflect_phys', text: '反射 {0} 点物理伤害给近战攻击者', tags: ['physical'], v: [[26, 50]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_flat', text: '增加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[8, 12], [17, 20]] },
+        jewellery: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[5, 7], [11, 14]] },
+      },
+      bySlot: {
+        gloves: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[5, 7], [11, 14]] },
+        quiver: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v: [[5, 7], [11, 14]] },
+      },
+    },
+    {
+      id: 'hatred_4', name: '憎恨', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#8fd8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_cold', text: '+{0}% 冰霜抗性', tags: ['resistance', 'cold'], v: [[24, 29]] },
+        weapon: { affix: 'prefix', group: 'weapon_cold_flat', text: '增加 {0} 到 {1} 点冰霜伤害', tags: ['cold', 'attack'], v: [[31, 42], [62, 71]] },
+        jewellery: { affix: 'prefix', group: 'cold_damage', text: '冰霜伤害提高 {0}%', tags: ['cold', 'damage'], v: [[18, 21]] },
+      },
+    },
+    {
+      id: 'anger_4', name: '愤怒', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#e88a6a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_fire', text: '+{0}% 火焰抗性', tags: ['resistance', 'fire'], v: [[24, 29]] },
+        weapon: { affix: 'prefix', group: 'weapon_fire_flat', text: '增加 {0} 到 {1} 点火焰伤害', tags: ['fire', 'attack'], v: [[34, 46], [68, 80]] },
+        jewellery: { affix: 'prefix', group: 'fire_damage', text: '火焰伤害提高 {0}%', tags: ['fire', 'damage'], v: [[18, 21]] },
+      },
+    },
+    {
+      id: 'wrath_4', name: '雷霆', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#f0d96a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_light', text: '+{0}% 闪电抗性', tags: ['resistance', 'lightning'], v: [[24, 29]] },
+        weapon: { affix: 'prefix', group: 'weapon_light_flat', text: '增加 {0} 到 {1} 点闪电伤害', tags: ['lightning', 'attack'], v: [[5, 8], [112, 131]] },
+        jewellery: { affix: 'prefix', group: 'light_damage', text: '闪电伤害提高 {0}%', tags: ['lightning', 'damage'], v: [[18, 21]] },
+      },
+    },
+    {
+      id: 'envy_4', name: '嫉妒', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 3, canReforgeRare: false, color: '#a8e88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_chaos', text: '+{0}% 混沌抗性', tags: ['resistance', 'chaos'], v: [[16, 20]] },
+        weapon: { affix: 'prefix', group: 'chaos_flat', text: '增加 {0} 到 {1} 点混沌伤害', tags: ['chaos', 'attack'], v: [[22, 35], [48, 62]] },
+        jewellery: { affix: 'prefix', group: 'chaos_damage', text: '混沌伤害提高 {0}%', tags: ['chaos', 'damage'], v: [[18, 21]] },
+      },
+    },
+    {
+      id: 'misery_4', name: '悲惨', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#9a9ae8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'mana_flat', text: '+{0} 最大魔力', tags: ['mana'], v: [[40, 44]] },
+        weapon: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v: [[17, 20]] },
+        jewellery: { affix: 'suffix', group: 'mana_regen', text: '魔力回复速度提高 {0}%', tags: ['mana'], v: [[40, 48]] },
+      },
+    },
+    {
+      id: 'doubt_4', name: '疑虑', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#9ad8b8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[61, 80]] },
+        weapon: { affix: 'suffix', group: 'accuracy', text: '+{0} 命中值', tags: ['attack'], v: [[216, 325]] },
+        jewellery: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v: [[61, 80]] },
+      },
+    },
+    {
+      id: 'dread_4', name: '恐惧', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#b8a88f',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[61, 80]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_pct', text: '{0}% 物理伤害提高', tags: ['physical', 'attack'], v: [[9, 12]] },
+        jewellery: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v: [[61, 80]] },
+      },
+    },
+    {
+      id: 'sorrow_4', name: '悲伤', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#8fc9e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[28, 32]] },
+        weapon: { affix: 'prefix', group: 'cold_pen', text: '伤害穿透 {0}% 冰霜抗性', tags: ['cold'], v: [[5, 5]] },
+        jewellery: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v: [[28, 32]] },
+      },
+    },
+    {
+      id: 'rage_4', name: '暴怒', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#e89a7a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[28, 32]] },
+        weapon: { affix: 'prefix', group: 'fire_pen', text: '伤害穿透 {0}% 火焰抗性', tags: ['fire'], v: [[5, 5]] },
+        jewellery: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v: [[28, 32]] },
+      },
+    },
+    {
+      id: 'spite_4', name: '恶意', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 2, canReforgeRare: false, color: '#e8d88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[28, 32]] },
+        weapon: { affix: 'prefix', group: 'light_pen', text: '伤害穿透 {0}% 闪电抗性', tags: ['lightning'], v: [[5, 5]] },
+        jewellery: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v: [[28, 32]] },
+      },
+    },
+    {
+      id: 'scorn_4', name: '轻视', tierName: '哀嚎', tier: 4, minIlvl: 30, cost: 3, canReforgeRare: false, color: '#c9b8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_avoid', text: '{0}% 几率避免被眩晕', tags: ['defence'], v: [[16, 20]] },
+        weapon: { affix: 'suffix', group: 'spell_crit', text: '法术暴击率提高 {0}%', tags: ['critical', 'caster'], v: [[60, 69]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v: [[17, 20]] },
+      },
+    },
+  ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
+
   const presets = [
     {
       id: 'life_helmet', name: '血量双抗头盔', desc: '入门目标：T3 生命 + T4 双抗。T4 抗性可以用工艺补最后一条，适合先跑通流程。',

@@ -79,7 +79,19 @@
     "greed_4": 2,
     "woe_4": 2,
     "zeal_4": 2,
-    "loathing_4": 3
+    "loathing_4": 3,
+    "contempt_4": 2,
+    "hatred_4": 2,
+    "anger_4": 2,
+    "wrath_4": 2,
+    "envy_4": 3,
+    "misery_4": 2,
+    "doubt_4": 2,
+    "dread_4": 2,
+    "sorrow_4": 2,
+    "rage_4": 2,
+    "spite_4": 2,
+    "scorn_4": 3
   },
   "fossils": {
     "pristine": 6,
