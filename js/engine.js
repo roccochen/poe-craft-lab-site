@@ -67,6 +67,7 @@
   D.essences.forEach((e) => { essenceById[e.id] = e; });
   const metaById = {};
   D.metaCrafts.forEach((m) => { metaById[m.id] = m; });
+  const AWAKENER_ORDER = ['shaper', 'elder', 'crusader', 'redeemer', 'hunter', 'warlord'];
   const fossilById = {};
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
   const targetById = Object.assign({}, modById, benchById);
@@ -430,6 +431,7 @@
       case 'scour': return prices.scour;
       case 'divine': return prices.divine;
       case 'vaal': return prices.vaal;
+      case 'awakener': return prices.awakener || 120;
       case 'essence': {
         const e = essenceById[action.essenceId];
         return e ? e.cost * (prices.essenceMult || 1) : 0;
@@ -551,6 +553,7 @@
         if (item.rarity !== 'magic' && item.rarity !== 'rare') return '神圣石只能用于魔法或稀有物品';
         return item.affixes.length ? null : '没有可重掷数值的词缀';
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
+      case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
       case 'meta': return item.rarity === 'rare' ? null : 'meta 工艺只能用于稀有物品';
       case 'multimod': return item.rarity === 'rare' ? null : '多重工艺只能用于稀有物品';
@@ -576,6 +579,30 @@
       : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
     const desc = (essence.bySlot && essence.bySlot[slot]) || (essence.byCat && essence.byCat[cat]);
     return desc ? null : '该精华不支持此物品。';
+  }
+  function awakenerDonorMods(item) {
+    if (!item || item.corrupted || item.rarity !== 'rare' || !item.influences || item.influences.length !== 1) return [];
+    const base = getBase(item.baseId);
+    const targetInf = item.influences[0];
+    return D.mods.filter((mod) => {
+      if (!mod.influence || mod.influence === targetInf) return false;
+      const donorItem = Object.assign({}, item, { influences: [mod.influence] });
+      if (!modEligibleOnBase(mod, base, donorItem)) return false;
+      return eligibleTiers(mod, item.ilvl).length > 0;
+    });
+  }
+  function awakenerAvailability(item, donorInfluence, donorModId) {
+    if (item.corrupted) return '物品已腐化，不能使用觉醒者之石。';
+    if (item.rarity !== 'rare') return '觉醒者之石只能用于稀有物品。';
+    if (!item.influences || item.influences.length !== 1) return '目标物品必须恰好有 1 个势力影响。';
+    if (!donorInfluence || donorInfluence === item.influences[0]) return '祭品势力必须与目标不同。';
+    if (AWAKENER_ORDER.indexOf(donorInfluence) === -1) return '未知的祭品势力。';
+    const mod = modById[donorModId];
+    if (!mod || mod.influence !== donorInfluence) return '请选择祭品上的一条影响词缀。';
+    const donorItem = Object.assign({}, item, { influences: [donorInfluence] });
+    if (!modEligibleOnBase(mod, getBase(item.baseId), donorItem)) return '这条影响词缀不能出现在当前底子上。';
+    if (!eligibleTiers(mod, item.ilvl).length) return '物品等级不足，祭品词缀没有可用品级。';
+    return null;
   }
   function fossilAvailability(item, ids) {
     if (item.corrupted) return '物品已腐化，不能使用化石。';
@@ -725,6 +752,34 @@
         } else {
           message = '瓦尔宝珠：没有发生额外变化，物品被腐化。';
         }
+        break;
+      }
+      case 'awakener': {
+        const reason = awakenerAvailability(next, action.donorInfluence, action.donorModId);
+        if (reason) return fail(reason);
+        const targetInf = next.influences[0];
+        const donorInf = action.donorInfluence;
+        const donorMod = modById[action.donorModId];
+        const donorTiers = eligibleTiers(donorMod, next.ilvl);
+        const donorTier = pickTier(rng, donorMod, donorTiers);
+        const targetInfluenced = next.affixes.filter((a) => a.influence === targetInf);
+        let keptTarget = targetInfluenced.length ? clone(targetInfluenced[randInt(rng, 0, targetInfluenced.length - 1)]) : null;
+        if (keptTarget) rerollAffixValues(keptTarget, rng);
+        const donorAff = makeAffix(donorMod, donorTier, rng);
+        let addDonor = true;
+        if (keptTarget && keptTarget.group === donorAff.group) {
+          if (rand(rng) < 0.5) keptTarget = null;
+          else addDonor = false;
+        }
+        next.affixes = [];
+        next.influences = AWAKENER_ORDER.filter((id) => id === targetInf || id === donorInf);
+        next.rarity = 'rare';
+        next.meta = { multimod: false, lockPrefix: false, lockSuffix: false };
+        if (keptTarget && keptTarget.group !== donorAff.group) next.affixes.push(keptTarget);
+        if (addDonor && canAdd(next, donorAff.affix) && !existingGroups(next)[donorAff.group]) next.affixes.push(donorAff);
+        fillTo(next, 6, rng, {});
+        message = '觉醒者之石：保留目标「' + (keptTarget ? keptTarget.text.split('\n')[0] : '无影响词缀') + '」' +
+          (addDonor ? '与祭品「' + donorAff.text.split('\n')[0] + '」' : '（祭品词缀与目标同组，未保留）') + '，重铸为双势力稀有物品。';
         break;
       }
       case 'essence': {
@@ -988,7 +1043,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

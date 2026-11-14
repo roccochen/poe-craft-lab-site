@@ -884,7 +884,7 @@
   const prices = {
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
-    divine: 200, resonator: 1, harvest: 15,
+    divine: 200, resonator: 1, harvest: 15, awakener: 120,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
   };

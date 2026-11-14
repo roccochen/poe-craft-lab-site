@@ -102,6 +102,7 @@
       case 'scour': return '重铸重来';
       case 'divine': return '神圣石调数值';
       case 'vaal': return '瓦尔腐化';
+      case 'awakener': return '觉醒者之石 · 双势力';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         return e ? (e.tierName + e.name + '精华') : '精华';
@@ -139,6 +140,7 @@
       case 'scour': return '清空词缀回到普通，通常用于彻底重来。';
       case 'divine': return '重掷数值，不改词缀和品级。';
       case 'vaal': return '腐化物品；可能获得腐化基底、变成 6 词缀稀有，或没有额外变化。';
+      case 'awakener': return '双势力合成：保留目标与祭品各一条影响词缀，其余重铸。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         const desc = e && essenceDesc(e, item);
@@ -191,7 +193,7 @@
     const baseEval = E.evaluate(item, targets);
     const baseGroups = matchedGroupSet(baseEval);
     let complete = 0, improve = 0, regress = 0, valid = 0;
-    const n = action.type === 'bench' || action.type === 'multimod' || action.type === 'meta' ? 1 : samples;
+    const n = action.type === 'bench' || action.type === 'multimod' || action.type === 'meta' || action.type === 'awakener' ? 1 : samples;
     for (let i = 0; i < n; i++) {
       const rng = E.makeRng((seed + i * 7919) >>> 0);
       const res = E.applyAction(item, action, { rng, prices });

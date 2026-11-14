@@ -853,6 +853,7 @@
     if (type === 'fossil' || type === 'harvest') return '重铸';
     if (type === 'meta') return 'meta';
     if (type === 'vaal') return '腐化';
+    if (type === 'awakener') return '势力合成';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -890,7 +891,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -898,6 +899,7 @@
       fossil: '用化石重铸，适合中级 / 高级玩家',
       harvest: '按标签重铸，适合中级 / 高级玩家',
       bench: '收尾补一条固定工艺词缀',
+      awakener: '双势力合成：保留目标与祭品各一条影响词缀',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -928,6 +930,8 @@
     else if (state.tab === 'fossil') renderFossilActions(body);
     else if (state.tab === 'harvest') renderHarvestActions(body);
     else if (state.tab === 'omen') renderOmenActions(body);
+    else if (state.tab === 'bench') renderBenchActions(body);
+    else if (state.tab === 'awakener') renderAwakenerActions(body);
     else renderBenchActions(body);
   }
   function renderBasicActions(body) {
@@ -1072,6 +1076,37 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderAwakenerActions(body) {
+    const item = state.item;
+    let reason = null;
+    if (item.corrupted) reason = '物品已腐化，不能使用觉醒者之石。';
+    else if (item.rarity !== 'rare') reason = '觉醒者之石只能用于稀有物品。';
+    else if (!item.influences || item.influences.length !== 1) reason = '目标物品必须恰好有 1 个势力影响。';
+    if (reason) {
+      body.innerHTML = '<div class="action-none">' + esc(reason) + '</div>';
+      return;
+    }
+    const mods = E.awakenerDonorMods(item);
+    if (!mods.length) {
+      body.innerHTML = '<div class="action-none">当前底子没有可用于祭品的其他势力词缀。</div>';
+      return;
+    }
+    const infName = (id) => (D.influences.find((x) => x.id === id) || {}).name || id;
+    body.innerHTML = '<div class="awakener-note"><b>觉醒者之石 · 双势力合成</b><p>祭品会用当前底子模拟，合成后被销毁；目标与祭品必须各有 1 个不同势力。结果保留双方各一条影响词缀，其余重铸为 6 词缀稀有物品。</p></div>' +
+      '<div class="awakener-grid">' + mods.map((m) => {
+        const tiers = E.eligibleTiers(m, item.ilvl);
+        const tier = tiers[tiers.length - 1];
+        const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
+        return '<button class="awakener-card" type="button" data-awakener-mod="' + m.id + '" data-awakener-inf="' + m.influence + '">' +
+          '<span class="awakener-inf">' + esc(infName(m.influence)) + '</span>' +
+          '<b>' + esc(m.name) + '</b>' +
+          '<em>' + esc(preview) + '</em>' +
+          '<small>最低 T' + E.tierRank(m, tier) + ' · iLv ' + tier.ilvl + '</small></button>';
+      }).join('') + '</div>';
+    $$('#action-body [data-awakener-mod]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: 'awakener', donorInfluence: b.dataset.awakenerInf, donorModId: b.dataset.awakenerMod });
+    });
   }
   function renderBenchActions(body) {
     if (state.item.rarity !== 'rare') {
@@ -1928,7 +1963,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length
