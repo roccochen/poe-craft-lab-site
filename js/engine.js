@@ -275,12 +275,26 @@
     };
   }
 
+  function fractureCandidates(baseId, ilvl, influences) {
+    const item = createItem(baseId, { ilvl, influences, rarity: 'rare' });
+    const base = getBase(item.baseId);
+    return D.mods.filter((mod) => modEligibleOnBase(mod, base, item) && eligibleTiers(mod, item.ilvl).length);
+  }
   function makeFracturedItem(baseId, opts) {
     opts = opts || {};
     const rng = opts.rng || defaultRng;
     const item = createItem(baseId, { ilvl: opts.ilvl, influences: opts.influences, rarity: 'rare' });
-    const side = rand(rng) < 0.5 ? 'prefix' : 'suffix';
-    addRandomAffix(item, side, rng, { fractured: true });
+    let side = rand(rng) < 0.5 ? 'prefix' : 'suffix';
+    if (opts.modId && modById[opts.modId]) {
+      const mod = modById[opts.modId];
+      const tiers = eligibleTiers(mod, item.ilvl);
+      if (tiers.length) {
+        side = mod.affix;
+        const aff = makeAffix(mod, tiers[tiers.length - 1], rng, { fractured: true });
+        item.affixes.push(aff);
+      }
+    }
+    if (!item.affixes.length) addRandomAffix(item, side, rng, { fractured: true });
     fillTo(item, 4, rng, {});
     return item;
   }
@@ -1323,7 +1337,7 @@
 
   const api = {
     makeRng, rand, randInt, randFloat, weightedPick, clone,
-    getBase, createItem, makeFracturedItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
+    getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
     essenceAvailability, qualityAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,

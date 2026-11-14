@@ -858,21 +858,51 @@
     switchView('gear');
     toast('已清空，重新开始。底子、目标、记录和花费都已重置。', 'success', 3500);
   }
-  function makeFracturedBase() {
-    const apply = () => {
-      state.item = E.makeFracturedItem(state.baseId, {
-        ilvl: state.ilvl, influences: state.influences, rng: E.makeRng((Date.now() ^ 0x9e3779b9) >>> 0),
-      });
-      resetProgress();
-      save();
-      renderAll();
-      toast('已生成破裂底子：1 条破裂词缀 + 3 条普通词缀。破裂词缀不会被剥离 / 混沌 / 重铸移除。', 'success', 4200);
+  function applyFracturedBase(modId) {
+    state.item = E.makeFracturedItem(state.baseId, {
+      ilvl: state.ilvl, influences: state.influences, modId,
+      rng: E.makeRng((Date.now() ^ 0x9e3779b9) >>> 0),
+    });
+    resetProgress();
+    save();
+    renderAll();
+    toast('已生成破裂底子：选定的破裂词缀 + 3 条普通词缀。', 'success', 4200);
+  }
+  function openFracturePicker() {
+    const candidates = E.fractureCandidates(state.baseId, state.ilvl, state.influences);
+    const hasProgress = state.item.affixes.length || state.log.length || state.spent > 0;
+    const choose = (modId) => {
+      closeModal();
+      if (hasProgress) openConfirm('生成破裂底子？', '会清空当前物品词缀和制作记录，重新生成一件带指定破裂词缀的稀有底子。', () => applyFracturedBase(modId));
+      else applyFracturedBase(modId);
     };
-    if (state.item.affixes.length || state.log.length || state.spent > 0) {
-      openConfirm('生成破裂底子？', '会清空当前物品词缀和制作记录，重新生成一件带 1 条破裂词缀的稀有底子。', apply);
-    } else {
-      apply();
-    }
+    const listHtml = (q) => {
+      const filtered = candidates.filter((m) => !q || (m.name + ' ' + m.text).toLowerCase().includes(q.toLowerCase()));
+      const groups = { prefix: [], suffix: [] };
+      filtered.forEach((m) => { if (groups[m.affix]) groups[m.affix].push(m); });
+      return ['prefix', 'suffix'].map((side) => {
+        if (!groups[side].length) return '';
+        return '<div class="fracture-group"><b>' + (side === 'prefix' ? '前缀' : '后缀') + '</b>' +
+          groups[side].slice(0, 40).map((m) => {
+            const tiers = E.eligibleTiers(m, state.ilvl);
+            const tier = tiers[tiers.length - 1];
+            const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
+            return '<button type="button" class="fracture-row" data-fracture-mod="' + m.id + '"><span>' + esc(m.name) + '</span><em>' + esc(preview) + '</em><small>T' + E.tierRank(m, tier) + '</small></button>';
+          }).join('') + '</div>';
+      }).join('') || '<div class="action-none">没有可用词缀。</div>';
+    };
+    openModal('<div class="modal-head"><div><h3>选择破裂词缀</h3><p>破裂词缀会锁定，不会被剥离 / 混沌 / 重铸移除。</p></div><button class="modal-close" data-close type="button">×</button></div>' +
+      '<div class="modal-body"><div class="field search-field compact"><span class="field-icon">⌕</span><input id="fracture-search" type="search" placeholder="搜索破裂词缀"></div><div class="fracture-list" id="fracture-list">' + listHtml('') + '</div></div>' +
+      '<div class="modal-foot"><button class="btn ghost" data-close type="button">取消</button><button class="btn ghost" id="fracture-random" type="button">随机破裂</button></div>', { narrow: false });
+    $$('#modal-root [data-close]').forEach((b) => { b.onclick = closeModal; });
+    const bindRows = () => {
+      $$('#fracture-list [data-fracture-mod]').forEach((b) => { b.onclick = () => choose(b.dataset.fractureMod); });
+    };
+    bindRows();
+    const search = $('#fracture-search');
+    if (search) search.oninput = () => { const list = $('#fracture-list'); list.innerHTML = listHtml(search.value); bindRows(); };
+    const random = $('#fracture-random');
+    if (random) random.onclick = () => choose(null);
   }
   function donorEligibility(item) {
     if (!item) return '请先制作 / 录入一件祭品。';
@@ -2398,7 +2428,7 @@
       toast('物品等级已设为 ' + v + '。');
     });
     $('#btn-undo').onclick = undo;
-    $('#btn-fractured').onclick = makeFracturedBase;
+    $('#btn-fractured').onclick = openFracturePicker;
     $('#btn-reset').onclick = () => {
       openConfirm('重置物品？', '会清空当前物品词缀、制作记录与花费统计，底子和目标保留。', () => {
         state.item = E.createItem(state.baseId, { ilvl: state.ilvl, influences: state.influences });
