@@ -285,15 +285,16 @@
     const rng = opts.rng || defaultRng;
     const item = createItem(baseId, { ilvl: opts.ilvl, influences: opts.influences, rarity: 'rare' });
     let side = rand(rng) < 0.5 ? 'prefix' : 'suffix';
-    if (opts.modId && modById[opts.modId]) {
-      const mod = modById[opts.modId];
+    const wanted = (opts.modIds || (opts.modId ? [opts.modId] : [])).slice(0, 3);
+    wanted.forEach((id) => {
+      const mod = modById[id];
+      if (!mod) return;
+      if (existingGroups(item)[mod.group]) return;
+      if (!canAdd(item, mod.affix)) return;
       const tiers = eligibleTiers(mod, item.ilvl);
-      if (tiers.length) {
-        side = mod.affix;
-        const aff = makeAffix(mod, tiers[tiers.length - 1], rng, { fractured: true });
-        item.affixes.push(aff);
-      }
-    }
+      if (!tiers.length) return;
+      item.affixes.push(makeAffix(mod, tiers[tiers.length - 1], rng, { fractured: true }));
+    });
     if (!item.affixes.length) addRandomAffix(item, side, rng, { fractured: true });
     fillTo(item, 4, rng, {});
     return item;

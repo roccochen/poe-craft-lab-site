@@ -858,51 +858,80 @@
     switchView('gear');
     toast('已清空，重新开始。底子、目标、记录和花费都已重置。', 'success', 3500);
   }
-  function applyFracturedBase(modId) {
+  function applyFracturedBase(modIds) {
     state.item = E.makeFracturedItem(state.baseId, {
-      ilvl: state.ilvl, influences: state.influences, modId,
+      ilvl: state.ilvl, influences: state.influences, modIds,
       rng: E.makeRng((Date.now() ^ 0x9e3779b9) >>> 0),
     });
     resetProgress();
     save();
     renderAll();
-    toast('已生成破裂底子：选定的破裂词缀 + 3 条普通词缀。', 'success', 4200);
+    toast('已生成破裂底子：' + (modIds && modIds.length ? modIds.length + ' 条指定破裂词缀' : '1 条随机破裂词缀') + ' + 普通词缀。', 'success', 4200);
   }
   function openFracturePicker() {
     const candidates = E.fractureCandidates(state.baseId, state.ilvl, state.influences);
     const hasProgress = state.item.affixes.length || state.log.length || state.spent > 0;
-    const choose = (modId) => {
+    const selected = {};
+    let query = '';
+    const finish = () => {
+      const ids = Object.keys(selected);
       closeModal();
-      if (hasProgress) openConfirm('生成破裂底子？', '会清空当前物品词缀和制作记录，重新生成一件带指定破裂词缀的稀有底子。', () => applyFracturedBase(modId));
-      else applyFracturedBase(modId);
+      if (hasProgress) openConfirm('生成破裂底子？', '会清空当前物品词缀和制作记录，重新生成一件带指定破裂词缀的稀有底子。', () => applyFracturedBase(ids));
+      else applyFracturedBase(ids);
     };
-    const listHtml = (q) => {
-      const filtered = candidates.filter((m) => !q || (m.name + ' ' + m.text).toLowerCase().includes(q.toLowerCase()));
+    const listHtml = () => {
+      const filtered = candidates.filter((m) => !query || (m.name + ' ' + m.text).toLowerCase().includes(query.toLowerCase()));
       const groups = { prefix: [], suffix: [] };
       filtered.forEach((m) => { if (groups[m.affix]) groups[m.affix].push(m); });
       return ['prefix', 'suffix'].map((side) => {
         if (!groups[side].length) return '';
         return '<div class="fracture-group"><b>' + (side === 'prefix' ? '前缀' : '后缀') + '</b>' +
-          groups[side].slice(0, 40).map((m) => {
+          groups[side].slice(0, 60).map((m) => {
             const tiers = E.eligibleTiers(m, state.ilvl);
             const tier = tiers[tiers.length - 1];
             const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
-            return '<button type="button" class="fracture-row" data-fracture-mod="' + m.id + '"><span>' + esc(m.name) + '</span><em>' + esc(preview) + '</em><small>T' + E.tierRank(m, tier) + '</small></button>';
+            const on = !!selected[m.id];
+            return '<button type="button" class="fracture-row ' + (on ? 'selected' : '') + '" data-fracture-mod="' + m.id + '"><i class="fr-check">' + (on ? '✓' : '') + '</i><span>' + esc(m.name) + '</span><em>' + esc(preview) + '</em><small>T' + E.tierRank(m, tier) + '</small></button>';
           }).join('') + '</div>';
       }).join('') || '<div class="action-none">没有可用词缀。</div>';
     };
-    openModal('<div class="modal-head"><div><h3>选择破裂词缀</h3><p>破裂词缀会锁定，不会被剥离 / 混沌 / 重铸移除。</p></div><button class="modal-close" data-close type="button">×</button></div>' +
-      '<div class="modal-body"><div class="field search-field compact"><span class="field-icon">⌕</span><input id="fracture-search" type="search" placeholder="搜索破裂词缀"></div><div class="fracture-list" id="fracture-list">' + listHtml('') + '</div></div>' +
-      '<div class="modal-foot"><button class="btn ghost" data-close type="button">取消</button><button class="btn ghost" id="fracture-random" type="button">随机破裂</button></div>', { narrow: false });
-    $$('#modal-root [data-close]').forEach((b) => { b.onclick = closeModal; });
-    const bindRows = () => {
-      $$('#fracture-list [data-fracture-mod]').forEach((b) => { b.onclick = () => choose(b.dataset.fractureMod); });
+    const refresh = () => {
+      const list = $('#fracture-list');
+      if (list) list.innerHTML = listHtml();
+      const count = Object.keys(selected).length;
+      const gen = $('#fracture-generate');
+      if (gen) { gen.disabled = count === 0; gen.textContent = count ? '生成破裂底子（已选 ' + count + '）' : '生成破裂底子'; }
+      const note = $('#fracture-count');
+      if (note) note.textContent = count + ' / 3';
+      bindRows();
     };
+    const bindRows = () => {
+      $$('#fracture-list [data-fracture-mod]').forEach((b) => {
+        b.onclick = () => {
+          const id = b.dataset.fractureMod;
+          if (selected[id]) delete selected[id];
+          else {
+            if (Object.keys(selected).length >= 3) { toast('最多选择 3 条破裂词缀。', 'error'); return; }
+            selected[id] = true;
+          }
+          refresh();
+        };
+      });
+    };
+    openModal('<div class="modal-head"><div><h3>选择破裂词缀</h3><p>可以选择 1–3 条；破裂词缀会锁定，不会被剥离 / 混沌 / 重铸移除。</p></div><button class="modal-close" data-close type="button">×</button></div>' +
+      '<div class="modal-body"><div class="fracture-toolbar"><div class="field search-field compact"><span class="field-icon">⌕</span><input id="fracture-search" type="search" placeholder="搜索破裂词缀"></div><span id="fracture-count">0 / 3</span></div><div class="fracture-list" id="fracture-list">' + listHtml() + '</div></div>' +
+      '<div class="modal-foot"><button class="btn ghost" data-close type="button">取消</button><button class="btn ghost" id="fracture-random" type="button">随机 1 条</button><button class="btn gold" id="fracture-generate" type="button" disabled>生成破裂底子</button></div>', { narrow: false });
+    $$('#modal-root [data-close]').forEach((b) => { b.onclick = closeModal; });
     bindRows();
     const search = $('#fracture-search');
-    if (search) search.oninput = () => { const list = $('#fracture-list'); list.innerHTML = listHtml(search.value); bindRows(); };
+    if (search) search.oninput = () => { query = search.value; refresh(); };
     const random = $('#fracture-random');
-    if (random) random.onclick = () => choose(null);
+    if (random) random.onclick = () => {
+      const m = candidates[Math.floor(Math.random() * candidates.length)];
+      if (m) { selected[m.id] = true; finish(); }
+    };
+    const gen = $('#fracture-generate');
+    if (gen) gen.onclick = finish;
   }
   function donorEligibility(item) {
     if (!item) return '请先制作 / 录入一件祭品。';
