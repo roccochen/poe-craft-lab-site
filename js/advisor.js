@@ -109,6 +109,10 @@
       case 'eldritch': return 'Eldritch · ' + (action.kind === 'exarch' ? '灼热' : '吞噬');
       case 'orb_conflict': return 'Orb of Conflict';
       case 'influence_exalt': return '势力崇高石';
+      case 'tainted_chaos': return '腐化混沌石';
+      case 'tainted_exalted': return '腐化崇高石';
+      case 'tainted_divine': return '腐化神圣石';
+      case 'tainted_annul': return '腐化剥离石';
       case 'unveil': return '揭露隐秘词缀';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
@@ -157,6 +161,10 @@
       case 'eldritch': return '添加 / 替换 ' + (action.kind === 'exarch' ? '灼热' : '吞噬') + ' Eldritch 基底。';
       case 'orb_conflict': return '随机提升一种 Eldritch 基底，并降低另一种；降低到 0 会移除。';
       case 'influence_exalt': return '给稀有物品添加 1 个势力影响，并随机获得 1 条该势力词缀。';
+      case 'tainted_chaos': return '重铸腐化稀有物品的随机词缀。';
+      case 'tainted_exalted': return '给腐化稀有物品增加一条词缀。';
+      case 'tainted_divine': return '重掷腐化物品的词缀数值。';
+      case 'tainted_annul': return '随机移除腐化物品的一条非破裂词缀。';
       case 'unveil': return '从 3 个隐秘选项中选择 1 条，替换待揭露词缀。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];

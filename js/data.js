@@ -884,6 +884,7 @@
   const prices = {
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
+    taintedChaos: 4, taintedExalted: 25, taintedDivine: 40, taintedAnnul: 8,
     divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, influenceExalt: 90, scrap: 0.1, whetstone: 0.1,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50, orbConflict: 80,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
@@ -1087,6 +1088,12 @@
     version: '1.0.1',
     configMode: 'static',
     essenceHint: '精华只能用于普通或稀有物品，且物品等级至少 65；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
+    taintedActions: [
+      { type: 'tainted_chaos', name: '腐化混沌石', short: '腐混', color: '#b06a7a', desc: '重铸腐化稀有物品的随机词缀' },
+      { type: 'tainted_exalted', name: '腐化崇高石', short: '腐崇', color: '#d19a8a', desc: '给腐化稀有物品增加一条词缀' },
+      { type: 'tainted_divine', name: '腐化神圣石', short: '腐圣', color: '#d8c9a8', desc: '重掷腐化物品的词缀数值' },
+      { type: 'tainted_annul', name: '腐化剥离石', short: '腐剥', color: '#9a8f8a', desc: '随机移除腐化物品的一条非破裂词缀' },
+    ],
     basicActions: [
       { type: 'transmute', name: '蜕变石', short: '蜕', color: '#8fa3c8', desc: '普通 → 1 词缀魔法', cost: 'transmute' },
       { type: 'alteration', name: '改造石', short: '改', color: '#7f9fe8', desc: '重铸魔法词缀（1–2 条）', cost: 'alteration' },

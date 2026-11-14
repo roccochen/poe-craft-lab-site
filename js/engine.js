@@ -70,6 +70,7 @@
   const veilById = {};
   D.veiledMods.forEach((m) => { veilById[m.id] = m; });
   const AWAKENER_ORDER = ['shaper', 'elder', 'crusader', 'redeemer', 'hunter', 'warlord'];
+  const TAINTED_TYPES = ['tainted_chaos', 'tainted_exalted', 'tainted_divine', 'tainted_annul'];
   const influenceOrbById = {};
   D.influenceOrbs.forEach((o) => { influenceOrbById[o.id] = o; });
   const fossilById = {};
@@ -466,6 +467,10 @@
       case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
       case 'orb_conflict': return prices.orbConflict || 80;
       case 'influence_exalt': return prices.influenceExalt || 90;
+      case 'tainted_chaos': return prices.taintedChaos;
+      case 'tainted_exalted': return prices.taintedExalted;
+      case 'tainted_divine': return prices.taintedDivine;
+      case 'tainted_annul': return prices.taintedAnnul;
       case 'unveil': return 0;
       case 'awakener': return prices.awakener || 120;
       case 'essence': {
@@ -562,7 +567,7 @@
     return true;
   }
   function canUseOn(item, type) {
-    if (item.corrupted && type !== 'vaal') return '物品已腐化，不能使用普通通货。';
+    if (item.corrupted && type !== 'vaal' && TAINTED_TYPES.indexOf(type) === -1) return '物品已腐化，不能使用普通通货。';
     return null;
   }
   function actionAvailability(item, type) {
@@ -598,6 +603,10 @@
       case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
       case 'orb_conflict': return orbConflictAvailability(item);
       case 'influence_exalt': return influenceAvailability(item, action.influence);
+      case 'tainted_chaos':
+      case 'tainted_exalted':
+      case 'tainted_divine':
+      case 'tainted_annul': return taintedAvailability(item, type);
       case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
       case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
@@ -676,6 +685,13 @@
     };
     item.affixes.push(aff);
     return aff;
+  }
+  function taintedAvailability(item, type) {
+    if (!item.corrupted) return 'Tainted 通货只能用于腐化物品。';
+    if (type === 'tainted_divine' || type === 'tainted_annul') {
+      return item.rarity === 'magic' || item.rarity === 'rare' ? null : '只能用于魔法或稀有物品。';
+    }
+    return item.rarity === 'rare' ? null : 'Tainted 重铸 / 崇高只能用于稀有物品。';
   }
   function influenceAvailability(item, influenceId) {
     if (item.corrupted) return '物品已腐化，不能使用势力崇高石。';
@@ -776,7 +792,7 @@
     next.meta = next.meta || { multimod: false };
     const cost = actionCost(action, prices);
     const fail = (msg) => ({ error: msg, item: next, cost: 0, message: '' });
-    if (next.corrupted && action.type !== 'vaal') return fail('物品已腐化，不能使用普通通货。');
+    if (next.corrupted && action.type !== 'vaal' && TAINTED_TYPES.indexOf(action.type) === -1) return fail('物品已腐化，不能使用普通通货。');
     let message = '';
 
     switch (action.type) {
@@ -1075,6 +1091,45 @@
         message = '势力崇高石：添加' + (action.influence === 'shaper' ? '塑界者' : action.influence === 'elder' ? '裂界者' : action.influence === 'crusader' ? '圣战者' : action.influence === 'redeemer' ? '救赎者' : action.influence === 'hunter' ? '狩猎者' : '督军') + '影响，并获得「' + aff.text.split('\n')[0] + '」。';
         break;
       }
+      case 'tainted_chaos': {
+        const reason = taintedAvailability(next, 'tainted_chaos');
+        if (reason) return fail(reason);
+        clearForReroll(next, []);
+        next.rarity = 'rare';
+        fillTo(next, rollRareCount(rng), rng, {});
+        message = '腐化混沌石：重铸腐化稀有物品的词缀。';
+        break;
+      }
+      case 'tainted_exalted': {
+        const reason = taintedAvailability(next, 'tainted_exalted');
+        if (reason) return fail(reason);
+        if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('词缀已满，无法使用腐化崇高石。');
+        const side = chooseSide(next, rng);
+        addRandomAffix(next, side, rng, {});
+        message = '腐化崇高石：给腐化物品增加一条' + (side === 'prefix' ? '前缀' : '后缀') + '。';
+        break;
+      }
+      case 'tainted_divine': {
+        const reason = taintedAvailability(next, 'tainted_divine');
+        if (reason) return fail(reason);
+        if (!next.affixes.length) return fail('没有可重掷数值的词缀。');
+        let changed = 0;
+        next.affixes.forEach((a) => { if (rerollAffixValues(a, rng)) changed++; });
+        if (!changed) return fail('没有可重掷数值的词缀。');
+        message = '腐化神圣石：重掷了 ' + changed + ' 条词缀数值。';
+        break;
+      }
+      case 'tainted_annul': {
+        const reason = taintedAvailability(next, 'tainted_annul');
+        if (reason) return fail(reason);
+        const removable = next.affixes.filter((a) => !a.fractured);
+        if (!removable.length) return fail('没有可移除的非破裂词缀。');
+        const victim = removable[randInt(rng, 0, removable.length - 1)];
+        next.affixes = next.affixes.filter((a) => a !== victim);
+        normalizeRarity(next);
+        message = '腐化剥离石：移除了「' + victim.text.split('\n')[0] + '」。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1340,7 +1395,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

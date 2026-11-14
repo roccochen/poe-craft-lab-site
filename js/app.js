@@ -970,6 +970,7 @@
     if (type === 'aisling' || type === 'unveil') return '隐秘';
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
+    if (type.indexOf('tainted_') === 0) return 'Tainted';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -1007,7 +1008,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'influence', name: '势力崇高' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -1019,6 +1020,7 @@
       aisling: '添加 / 揭露隐秘词缀',
       eldritch: '灼热 / 吞噬 Eldritch 基底',
       influence: '给稀有物品添加势力影响与势力词缀',
+      tainted: '腐化后才能使用的 Tainted 通货',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -1051,6 +1053,7 @@
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
     else if (state.tab === 'influence') renderInfluenceActions(body);
+    else if (state.tab === 'tainted') renderTaintedActions(body);
     else if (state.tab === 'aisling') renderAislingActions(body);
     else if (state.tab === 'eldritch') renderEldritchActions(body);
     else if (state.tab === 'awakener') renderAwakenerActions(body);
@@ -1212,6 +1215,26 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderTaintedActions(body) {
+    const item = state.item;
+    if (!item.corrupted) {
+      body.innerHTML = '<div class="action-none">Tainted 通货只能用于腐化物品。先用瓦尔宝珠腐化。</div>';
+      return;
+    }
+    const prices = priceOverrides();
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">Tainted 通货可以继续修改腐化物品；会保留腐化状态。</div>' +
+      '<div class="action-grid">' + D.taintedActions.map((a) => {
+        const reason = E.taintedAvailability(item, a.type);
+        const cost = E.actionCost({ type: a.type }, prices);
+        return '<button class="action-btn ' + (reason ? 'unavailable' : '') + '" type="button" data-tainted="' + a.type + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' +
+          '<span class="orb" style="--orb:' + a.color + '">' + a.short + '</span>' +
+          '<span class="action-info"><span class="action-name">' + esc(a.name) + '</span><span class="action-desc">' + esc(reason || a.desc) + '</span></span>' +
+          '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
+      }).join('') + '</div>';
+    $$('#action-body [data-tainted]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: b.dataset.tainted });
+    });
   }
   function renderInfluenceActions(body) {
     const item = state.item;
@@ -2209,7 +2232,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length
