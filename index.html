@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-type="software" data-radius="soft" data-buttons="solid" data-motion="on">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>流放做装台 · PoE1 / PoE2 装备制作助手</title>
+  <meta name="description" content="流放之路 1 / 2 装备制作辅助工具：选择底子与目标词缀，模拟每一步做装结果并动态推荐后续策略。">
+  <meta name="page-type" content="software">
+  <meta name="site-kind" content="gaming">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="stylesheet" href="assets/ux.css">
+  <link rel="stylesheet" href="assets/mobile-next.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="sigil" aria-hidden="true"><span>流</span></div>
+        <div class="brand-text">
+          <h1>流放做装台</h1>
+          <p id="brand-sub">PATH OF EXILE 1 · 装备制作助手</p>
+        </div>
+      </div>
+      <nav class="game-switch" id="game-switch" aria-label="选择游戏">
+        <a href="?game=poe1" data-game="poe1">流放 1</a>
+        <a href="?game=poe2" data-game="poe2">流放 2</a>
+      </nav>
+      <div class="topbar-meta">
+        <span class="live-dot"></span>
+        <span class="offline">本地运行 · 数据 v<span id="data-version">1.0.0</span></span>
+        <span class="config-badge" id="config-badge" title="当前使用的数据配置">内置配置</span>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btn-settings" type="button" title="查看价格数据与拉取状态">价格数据</button>
+        <button class="btn ghost" id="btn-manual" type="button" title="把游戏里已经做出来的装备录入进来">录入装备</button>
+        <button class="btn ghost" id="btn-export" type="button" title="把当前方案保存成 JSON">保存方案</button>
+        <button class="btn ghost" id="btn-import" type="button" title="载入之前保存的方案">载入方案</button>
+        <input type="file" id="file-import" accept="application/json,.json" hidden>
+      </div>
+    </header>
+
+    <section class="journey" id="journey" aria-label="新手路线">
+      <div class="journey-inner">
+        <div class="journey-lead">
+          <span class="eyebrow">新手路线</span>
+          <b id="journey-next">从选择底子开始</b>
+        </div>
+        <ol class="journey-steps">
+          <li data-step="base">
+            <button type="button" data-jump="base"><span>1</span><b>选底子</b><small>要做什么装备</small></button>
+          </li>
+          <li data-step="targets">
+            <button type="button" data-jump="targets"><span>2</span><b>定目标</b><small>想要哪些词缀</small></button>
+          </li>
+          <li data-step="craft">
+            <button type="button" data-jump="craft"><span>3</span><b>开始制作</b><small>跟着推荐走</small></button>
+          </li>
+          <li data-step="finish">
+            <button type="button" data-jump="finish"><span>4</span><b>收尾</b><small>检查数值</small></button>
+          </li>
+        </ol>
+        <button class="btn guide-btn" id="journey-guide" type="button">3 分钟指南</button>
+      </div>
+    </section>
+
+    <main class="layout">
+      <!-- 左栏：底子 / 目标 -->
+      <aside class="panel left-panel">
+        <section class="block" id="step-base">
+          <div class="block-head">
+            <h2><span class="step-no">01</span>选择底子 <span class="help-dot" tabindex="0" title="底子就是你要做的装备类型。先选槽位，再点具体底子。" aria-label="底子说明">?</span></h2>
+            <span class="block-hint" id="base-count"></span>
+          </div>
+          <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
+          <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
+          <div class="field search-field">
+            <span class="field-icon" aria-hidden="true">⌕</span>
+            <input id="base-search" type="search" placeholder="搜索底子名称 / 英文名" autocomplete="off">
+          </div>
+          <div class="base-list" id="base-list"></div>
+        </section>
+
+        <section class="block" id="step-targets">
+          <div class="block-head">
+            <h2><span class="step-no">02</span>目标词缀 <span class="help-dot" tabindex="0" title="目标词缀 = 你希望最后装备上出现的属性。T1 最好，T4 较低，品级越高越难。" aria-label="目标词缀说明">?</span></h2>
+            <span class="block-hint" id="target-count">0 / 6</span>
+          </div>
+          <p class="block-desc">挑你最终想保留的属性。T1 最好、T4 较低；先选 2–3 条，不要一次贪多。</p>
+          <div class="target-list" id="target-list"></div>
+
+          <div class="target-builder">
+            <div class="builder-head">
+              <span class="mini-title">添加词缀</span>
+              <div class="tabs tiny" id="target-side-tabs"></div>
+            </div>
+            <div class="field search-field compact">
+              <span class="field-icon" aria-hidden="true">⌕</span>
+              <input id="target-search" type="search" placeholder="搜索词缀 / 标签" autocomplete="off">
+            </div>
+            <div class="target-pool" id="target-pool"></div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <h2><span class="step-no">03</span>快速模板 <span class="help-dot" tabindex="0" title="不知道怎么选目标时，先点一个模板。它会帮你把底子和目标都设好。" aria-label="快速模板说明">?</span></h2>
+          </div>
+          <p class="block-desc">第一次用？直接点一个模板，目标会自动填好。</p>
+          <div class="preset-list" id="preset-list"></div>
+        </section>
+      </aside>
+
+      <!-- 中栏：物品 / 操作 / 记录 -->
+      <section class="center">
+        <section class="item-panel">
+          <div class="item-toolbar">
+            <div class="toolbar-left">
+              <span class="rarity-label" id="rarity-label">普通物品</span>
+              <span class="toolbar-sep"></span>
+              <span class="toolbar-meta" id="item-meta">物品等级 86</span>
+            </div>
+            <div class="toolbar-actions">
+              <label class="ilvl-field">物品等级
+                <input id="ilvl-input" type="number" min="1" max="100" step="1" value="86">
+              </label>
+              <button class="btn tiny ghost" id="btn-undo" type="button" title="撤销上一步 (Ctrl+Z)">撤销</button>
+              <button class="btn tiny ghost" id="btn-reset" type="button">重置物品</button>
+              <button class="btn tiny ghost" id="btn-copy" type="button">复制文本</button>
+            </div>
+          </div>
+          <div class="influence-row" id="influence-row"></div>
+          <div class="item-card" id="item-card"></div>
+          <div class="item-stats" id="item-stats"></div>
+        </section>
+
+        <section class="result-prompt" id="result-prompt" aria-label="这一步结果确认" aria-live="polite" hidden></section>
+        <section class="mobile-next" id="mobile-next" hidden></section>
+
+        <section class="action-panel panel-flat" id="step-craft">
+          <div class="panel-head">
+            <div>
+              <h2>做装操作 <span class="help-dot" tabindex="0" title="每一次操作前，顾问会先估算成功率和花费。不知道选哪个，就按顾问首选。" aria-label="做装操作说明">?</span></h2>
+              <p id="action-hint">先从顾问推荐开始；想自己选，再点下面的通货。</p>
+            </div>
+            <div class="panel-head-actions">
+              <button class="btn gold" id="btn-auto" type="button" title="模拟连续推演，不逐步确认结果；真实做装请手动执行每一步。最多 30 步 / 1500c">连续执行</button>
+            </div>
+          </div>
+          <div class="tabs action-tabs" id="action-tabs" role="tablist"></div>
+          <div class="action-body" id="action-body"></div>
+        </section>
+
+        <section class="log-panel panel-flat">
+          <div class="panel-head">
+            <div>
+              <h2>制作记录 <span class="help-dot" tabindex="0" title="每一步都会记录。做错了可以点撤销，不会丢档。" aria-label="制作记录说明">?</span></h2>
+              <p>每一步都会记录；做错了点「撤销」，不用从头再来。</p>
+            </div>
+            <div class="log-stats">
+              <span>花费 <b id="spent-total">0c</b></span>
+              <span>操作 <b id="attempt-total">0</b></span>
+            </div>
+          </div>
+          <div class="craft-log" id="craft-log"></div>
+        </section>
+      </section>
+
+      <!-- 右栏：策略顾问 -->
+      <aside class="panel right-panel" id="step-finish">
+        <div class="advisor-head">
+          <div>
+            <h2>下一步怎么做 <span class="help-dot" tabindex="0" title="这里会根据当前装备和目标，估算每一步的成功率、风险和花费。新手先按首选走。" aria-label="顾问说明">?</span></h2>
+            <p>不用自己算。看首选，点「执行这一步」就可以。</p>
+          </div>
+          <button class="btn tiny ghost" id="btn-analyze" type="button" title="用更多样本重新估算">重新估算</button>
+        </div>
+
+        <div class="diagnosis" id="diagnosis"></div>
+
+        <div class="progress-card">
+          <div class="progress-head">
+            <span>离目标还差多少</span>
+            <b id="progress-text">0 / 0</b>
+          </div>
+          <div class="progress-bar"><i id="progress-fill"></i></div>
+          <div class="progress-meta" id="progress-meta"></div>
+          <ul class="target-checks" id="target-checks"></ul>
+        </div>
+
+        <div class="advisor-section">
+          <div class="section-title">
+            <h3>现在推荐这样做</h3>
+            <span class="section-note">按成功率与花费估算</span>
+          </div>
+          <div class="recommendations" id="recommendations"></div>
+        </div>
+
+        <div class="advisor-section">
+          <div class="section-title">
+            <h3>推荐顺序</h3>
+            <span class="section-note" id="plan-title">动态</span>
+          </div>
+          <div class="plan-card" id="route-plan"></div>
+          <div class="route-actions">
+            <button class="btn ghost wide" id="btn-sim-route" type="button">估算整套要花多少</button>
+          </div>
+          <div class="route-stats" id="route-stats"></div>
+        </div>
+
+        <footer class="advisor-foot">
+          估算基于内置权重与品级分布，真实结果会有浮动；价格只影响花费排序。做出来的真实装备可以用右上角「录入装备」继续推演。
+        </footer>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+  <div class="modal-root" id="modal-root"></div>
+
+  <script src="js/runtime-config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/data-poe2.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/config-poe2.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/engine-poe2.js"></script>
+  <script src="js/advisor.js"></script>
+  <script src="js/advisor-poe2.js"></script>
+  <script src="js/games.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

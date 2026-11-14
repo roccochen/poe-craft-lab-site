@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "dataVersion": "0.3.0",
+  "version": "poe2-0.3.0",
+  "updatedAt": "2026-11-14T02:08:12.482Z",
+  "source": "built-in",
+  "prices": {
+    "transmute": 0.1,
+    "augmentation": 0.2,
+    "regal": 0.5,
+    "alchemy": 0.35,
+    "chaos": 1,
+    "exalted": 3,
+    "divine": 220,
+    "annulment": 8,
+    "vaal": 1.5,
+    "omen_whittling": 30,
+    "omen_sinistral_erasure": 18,
+    "omen_dextral_erasure": 18,
+    "omen_sinistral_exalt": 45,
+    "omen_dextral_exalt": 45,
+    "omen_greater_exalt": 85
+  },
+  "essences": {
+    "greater_body": 9,
+    "greater_mind": 5,
+    "greater_insulation": 6,
+    "greater_haste": 12,
+    "greater_alacrity": 10,
+    "greater_sorcery": 14,
+    "greater_abrasion": 11,
+    "greater_flames": 11,
+    "greater_ice": 11,
+    "perfect_body": 28,
+    "perfect_mind": 20,
+    "perfect_insulation": 22,
+    "perfect_haste": 35,
+    "perfect_alacrity": 25,
+    "perfect_sorcery": 55,
+    "perfect_abrasion": 30,
+    "perfect_flames": 30,
+    "perfect_ice": 30
+  },
+  "settings": {
+    "samples": 160
+  }
+}
