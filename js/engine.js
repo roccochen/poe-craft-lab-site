@@ -65,6 +65,8 @@
   D.bench.forEach((b) => { benchById[b.id] = b; });
   const essenceById = {};
   D.essences.forEach((e) => { essenceById[e.id] = e; });
+  const metaById = {};
+  D.metaCrafts.forEach((m) => { metaById[m.id] = m; });
   const fossilById = {};
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
   const targetById = Object.assign({}, modById, benchById);
@@ -127,6 +129,41 @@
   }
   function craftedCount(item) {
     return item.affixes.filter((a) => a.crafted).length;
+  }
+  function isMetaAffix(a) {
+    return !!(a && (a.meta || (a.group || '').indexOf('meta_') === 0));
+  }
+  function syncMetaFlags(item) {
+    item.meta = item.meta || {};
+    item.meta.multimod = item.affixes.some((a) => a.group === 'meta_multimod');
+    item.meta.lockPrefix = item.affixes.some((a) => a.group === 'meta_lock_prefix');
+    item.meta.lockSuffix = item.affixes.some((a) => a.group === 'meta_lock_suffix');
+  }
+  function metaAffix(def) {
+    return {
+      uid: uidCounter++, id: 'meta_' + def.id, modId: 'meta_' + def.id, name: def.name,
+      affix: def.affix, group: def.group, text: def.text, values: [], tiers: [],
+      tierRank: 1, tierIlvl: 1, tierName: '工艺', tags: ['crafted', 'meta'],
+      crafted: true, meta: true, metaType: def.id,
+    };
+  }
+  function metaAvailability(item, metaId) {
+    const def = metaById[metaId];
+    if (!def) return '未知工艺。';
+    if (item.corrupted) return '物品已腐化，不能使用工艺台。';
+    if (item.rarity !== 'rare') return 'meta 工艺只能用于稀有物品。';
+    if (existingGroups(item)[def.group]) return '已经有这个 meta 工艺。';
+    if (craftedCount(item) >= maxCrafted(item)) return '工艺词缀已满；先移除一条或使用多重工艺。';
+    if (!canAdd(item, def.affix)) return '对应的一侧已经没有空位。';
+    if (def.id === 'lock_prefix' && !sides(item, 'prefix').length) return '没有可保护的前缀。';
+    if (def.id === 'lock_suffix' && !sides(item, 'suffix').length) return '没有可保护的后缀。';
+    return null;
+  }
+  function lockedSides(item) {
+    return {
+      prefix: !!(item.meta && item.meta.lockPrefix) || item.affixes.some((a) => a.group === 'meta_lock_prefix'),
+      suffix: !!(item.meta && item.meta.lockSuffix) || item.affixes.some((a) => a.group === 'meta_lock_suffix'),
+    };
   }
   function maxCrafted(item) { return item.meta && item.meta.multimod ? 3 : 1; }
   function sideCap(item, side) {
@@ -244,8 +281,9 @@
     return aff;
   }
 
-  function chooseSide(item, rng) {
-    const opts = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
+  function chooseSide(item, rng, preserveSides) {
+    const keep = preserveSides || [];
+    const opts = ['prefix', 'suffix'].filter((s) => canAdd(item, s) && keep.indexOf(s) === -1);
     if (!opts.length) return null;
     if (opts.length === 1) return opts[0];
     const p = sides(item, 'prefix').length;
@@ -258,14 +296,15 @@
   function fillTo(item, total, rng, opts) {
     opts = opts || {};
     while (item.affixes.length < total) {
-      const side = chooseSide(item, rng);
+      const side = chooseSide(item, rng, opts.preserveSides);
       if (!side) break;
       const aff = addRandomAffix(item, side, rng, opts);
       if (!aff) break;
     }
     if (opts.guaranteeTag && !item.affixes.some((a) => a.tags.indexOf(opts.guaranteeTag) !== -1)) {
       // 至少一条对应标签：把一条非破裂词缀替换为标签词缀
-      const replaceable = item.affixes.filter((a) => !a.fractured);
+      const keepSides = opts.preserveSides || [];
+      const replaceable = item.affixes.filter((a) => !a.fractured && keepSides.indexOf(a.affix) === -1);
       if (replaceable.length) {
         const victim = replaceable[randInt(rng, 0, replaceable.length - 1)];
         const side = victim.affix;
@@ -350,7 +389,7 @@
       const def = getTargetDef(t.modId);
       if (def) targetGroups[targetGroup(def)] = true;
     });
-    const junk = item.affixes.filter((a) => !targetGroups[a.group]);
+    const junk = item.affixes.filter((a) => !targetGroups[a.group] && !isMetaAffix(a));
     return {
       matched,
       missing,
@@ -403,6 +442,10 @@
       case 'bench': {
         const b = benchById[action.benchId];
         return b ? b.cost : 0;
+      }
+      case 'meta': {
+        const def = metaById[action.metaId];
+        return def && def.id === 'multimod' ? (prices.multimod || 400) : (prices.lock || 400);
       }
       case 'multimod': return prices.multimod || 400;
       case 'lock_chaos': return (prices.lock || 400) + prices.chaos;
@@ -508,6 +551,7 @@
         return item.affixes.length ? null : '没有可重掷数值的词缀';
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
+      case 'meta': return item.rarity === 'rare' ? null : 'meta 工艺只能用于稀有物品';
       case 'multimod': return item.rarity === 'rare' ? null : '多重工艺只能用于稀有物品';
       case 'lock_chaos':
       case 'lock_scour':
@@ -523,7 +567,8 @@
     if (item.corrupted) return '物品已腐化，不能使用精华。';
     if (item.rarity !== 'normal' && item.rarity !== 'rare') return '精华只能用于普通或稀有物品。';
     if (item.rarity === 'rare' && essence.canReforgeRare === false) return '该精华不能重铸稀有物品。';
-    if (item.meta && (item.meta.lockPrefix || item.meta.lockSuffix)) return '物品有锁前 / 锁后 meta 工艺，不能使用精华。';
+    const locks = lockedSides(item);
+    if (locks.prefix || locks.suffix) return '物品有锁前 / 锁后 meta 工艺，不能使用精华。';
     if (item.ilvl < (essence.minIlvl || 1)) return '物品等级不足，需要 ' + essence.minIlvl + ' 级。';
     const slot = getBase(item.baseId).slot;
     const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
@@ -533,7 +578,8 @@
   }
   function fossilAvailability(item, ids) {
     if (item.corrupted) return '物品已腐化，不能使用化石。';
-    if (item.meta && (item.meta.lockPrefix || item.meta.lockSuffix)) return '物品有锁前 / 锁后 meta 工艺，不能使用化石。';
+    const locks = lockedSides(item);
+    if (locks.prefix || locks.suffix) return '物品有锁前 / 锁后 meta 工艺，不能使用化石。';
     if (item.rarity !== 'rare') return '化石只能用于稀有物品。';
     if (!ids || !ids.length) return '请至少选择一枚化石。';
     return null;
@@ -597,22 +643,34 @@
       }
       case 'chaos': {
         if (next.rarity !== 'rare') return fail('混沌石只能重铸稀有物品。');
-        clearForReroll(next, []);
-        fillTo(next, rollRareCount(rng), rng, {});
-        message = '使用混沌石：重铸稀有词缀。';
+        const locks = lockedSides(next);
+        if (locks.prefix && locks.suffix) return fail('前缀和后缀都被锁住，混沌石无法改变任何词缀。');
+        const preserve = locks.prefix ? ['prefix'] : (locks.suffix ? ['suffix'] : []);
+        clearForReroll(next, preserve);
+        fillTo(next, rollRareCount(rng), rng, { preserveSides: preserve });
+        message = preserve.length
+          ? '使用混沌石：保留' + (preserve[0] === 'prefix' ? '前缀' : '后缀') + '，重铸另一侧词缀。'
+          : '使用混沌石：重铸稀有词缀。';
         break;
       }
       case 'exalted': {
         if (next.rarity !== 'rare') return fail('崇高石只能用于稀有物品。');
         if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('词缀已满，无法使用崇高石。');
-        const side = chooseSide(next, rng);
+        const locks = lockedSides(next);
+        if (locks.prefix && locks.suffix) return fail('前缀和后缀都被锁住，无法使用崇高石。');
+        let side;
+        if (locks.prefix) side = 'suffix';
+        else if (locks.suffix) side = 'prefix';
+        else side = chooseSide(next, rng);
+        if (!side || !canAdd(next, side)) return fail('可增加词缀的一侧已满，无法使用崇高石。');
         addRandomAffix(next, side, rng, {});
         message = '使用崇高石：增加一条随机' + (side === 'prefix' ? '前缀' : '后缀') + '。';
         break;
       }
       case 'annulment': {
         if (next.rarity !== 'rare' && next.rarity !== 'magic') return fail('剥离石只能用于魔法或稀有物品。');
-        const removable = next.affixes.filter((a) => !a.fractured);
+        const locks = lockedSides(next);
+        const removable = next.affixes.filter((a) => !a.fractured && !(locks[a.affix]));
         if (!removable.length) return fail('没有可剥离的词缀（破裂词缀无法剥离）。');
         const victim = removable[randInt(rng, 0, removable.length - 1)];
         next.affixes = next.affixes.filter((a) => a !== victim);
@@ -622,10 +680,16 @@
       }
       case 'scour': {
         if (next.rarity !== 'rare' && next.rarity !== 'magic') return fail('重铸石只能用于魔法或稀有物品。');
-        next.affixes = next.affixes.filter((a) => a.fractured);
+        const locks = lockedSides(next);
+        const preserve = [];
+        if (locks.prefix) preserve.push('prefix');
+        if (locks.suffix) preserve.push('suffix');
+        clearForReroll(next, preserve);
         normalizeRarity(next);
         if (next.rarity !== 'normal') next.rarity = 'rare';
-        message = '使用重铸石：清除词缀。';
+        message = preserve.length
+          ? '使用重铸石：保留' + (preserve.length === 2 ? '两侧' : (preserve[0] === 'prefix' ? '前缀' : '后缀')) + '，清除其余词缀。'
+          : '使用重铸石：清除词缀。';
         break;
       }
       case 'divine': {
@@ -670,8 +734,12 @@
       case 'harvest': {
         if (next.rarity !== 'rare') return fail('庄园重铸只能用于稀有物品。');
         if (!action.tag) return fail('请选择庄园标签。');
-        clearForReroll(next, []);
-        fillTo(next, rollRareCount(rng), rng, { tag: action.tag, guaranteeTag: action.tag });
+        const locks = lockedSides(next);
+        const preserve = [];
+        if (locks.prefix) preserve.push('prefix');
+        if (locks.suffix) preserve.push('suffix');
+        clearForReroll(next, preserve);
+        fillTo(next, rollRareCount(rng), rng, { tag: action.tag, guaranteeTag: action.tag, preserveSides: preserve });
         message = '使用庄园重铸：保证至少一条「' + action.tag + '」标签词缀。';
         break;
       }
@@ -687,10 +755,22 @@
         message = '工艺台：添加「' + craft.name + '」。';
         break;
       }
+      case 'meta': {
+        const def = metaById[action.metaId];
+        if (!def) return fail('未知 meta 工艺。');
+        const reason = metaAvailability(next, def.id);
+        if (reason) return fail(reason);
+        next.affixes.push(metaAffix(def));
+        syncMetaFlags(next);
+        message = '工艺台：添加「' + def.name + '」，占用 1 条' + (def.affix === 'prefix' ? '前缀' : '后缀') + '。';
+        break;
+      }
       case 'multimod': {
-        if (next.rarity !== 'rare') return fail('多重工艺只能用于稀有物品。');
-        if (next.meta.multimod) return fail('已经拥有多重工艺。');
-        next.meta.multimod = true;
+        const def = metaById.multimod;
+        const reason = metaAvailability(next, 'multimod');
+        if (reason) return fail(reason);
+        next.affixes.push(metaAffix(def));
+        syncMetaFlags(next);
         message = '工艺台：添加多重工艺，最多可拥有 3 条工艺词缀。';
         break;
       }
@@ -726,6 +806,7 @@
         return fail('未知操作。');
     }
 
+    syncMetaFlags(next);
     next.affixes.sort((a, b) => (a.affix === b.affix ? 0 : a.affix === 'prefix' ? -1 : 1));
     return { item: next, cost, message, error: null };
   }
@@ -759,7 +840,7 @@
       lines.push('--------');
       item.affixes.forEach((a) => {
         const tag = a.fractured ? ' [破裂]' : a.crafted ? ' [工艺]' : a.essence ? ' [精华]' : '';
-        a.text.split('\n').forEach((l) => lines.push(l + (l === a.text.split('\n')[0] ? '  ' + tierLabel(a.tierRank) + tag : '')));
+        a.text.split('\n').forEach((l) => lines.push(l + (l === a.text.split('\n')[0] ? (a.meta ? '' : '  ' + tierLabel(a.tierRank)) + tag : '')));
       });
     }
     return lines.join('\n');
@@ -880,7 +961,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability,
+    essenceAvailability, fossilAvailability, harvestAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

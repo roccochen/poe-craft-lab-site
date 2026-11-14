@@ -102,6 +102,7 @@
       state.view = ['gear', 'targets', 'craft', 'log'].indexOf(parsed.view) !== -1 ? parsed.view : 'gear';
       state.collapsed = Object.assign({ presets: false, base: false, targets: false, actions: false, log: false, plan: false }, parsed.collapsed || {});
       state.item.meta = state.item.meta || { multimod: false };
+      E.syncMetaFlags(state.item);
       state.item.influences = state.item.influences || [];
       state.item.affixes = state.item.affixes || [];
       state.item.ilvl = state.item.ilvl || E.getBase(state.item.baseId).ilvl;
@@ -735,6 +736,7 @@
         if (!a.crafted && !a.essence) tagBits.push('T' + a.tierRank);
         if (a.essence) tagBits.push('精华');
         if (a.crafted) tagBits.push('工艺');
+        if (a.meta) tagBits.push('meta');
         if (a.fractured) tagBits.push('破裂');
         return '<li class="item-mod ' + a.affix + (a.crafted ? ' crafted' : '') + (a.fractured ? ' fractured' : '') + (a.essence ? ' essence' : '') + '">' +
           '<span class="mod-text">' + mdText(a.text) + '</span>' +
@@ -849,6 +851,7 @@
     if (type === 'divine') return '调数值';
     if (type === 'essence') return '保底';
     if (type === 'fossil' || type === 'harvest') return '重铸';
+    if (type === 'meta') return 'meta';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -1087,34 +1090,26 @@
     } else {
       html += '<div class="action-none">当前没有可添加的工艺：可能词缀已满、同组词缀已存在，或该底子不支持。</div>';
     }
-    const rare = state.item.rarity === 'rare';
-    const canLockPrefix = rare && E.sides(state.item, 'prefix').length > 0;
-    const canLockSuffix = rare && E.sides(state.item, 'suffix').length > 0;
-    html += '<div class="form-hint" style="margin-top:12px;margin-bottom:6px">meta 工艺（按 2 崇高估算，可在价格数据中调整）</div>' +
-      '<div class="lock-grid">' +
-      '<div class="lock-card"><h4>保护前缀</h4><p>锁住前缀，只处理后缀。适合前缀已经完成的情况。</p>' +
-      '<div class="lock-btns"><button class="btn tiny" data-lock="prefix" data-method="chaos" ' + (canLockPrefix ? '' : 'disabled') + '>锁前 + 混沌</button>' +
-      '<button class="btn tiny" data-lock="prefix" data-method="scour" ' + (canLockPrefix ? '' : 'disabled') + '>锁前 + 重铸</button></div></div>' +
-      '<div class="lock-card"><h4>保护后缀</h4><p>锁住后缀，只处理前缀。适合后缀已经完成的情况。</p>' +
-      '<div class="lock-btns"><button class="btn tiny" data-lock="suffix" data-method="chaos" ' + (canLockSuffix ? '' : 'disabled') + '>锁后 + 混沌</button>' +
-      '<button class="btn tiny" data-lock="suffix" data-method="scour" ' + (canLockSuffix ? '' : 'disabled') + '>锁后 + 重铸</button></div></div>' +
-      '</div>' +
-      '<div class="fossil-bar" style="margin-top:9px"><div class="fossil-detail">' +
-      (state.item.meta && state.item.meta.multimod ? '已拥有多重工艺。' : '多重工艺允许最多 3 条工艺词缀，适合最后收尾。') +
-      '</div><button class="btn tiny" id="btn-multimod" ' + (rare && !(state.item.meta && state.item.meta.multimod) ? '' : 'disabled') + '>多重工艺 ' + costText(prices.multimod || 36) + '</button></div>';
+    const metaCard = (id) => {
+      const def = E.metaById[id];
+      const reason = E.metaAvailability(state.item, id);
+      const applied = state.item.affixes.some((a) => a.group === def.group);
+      const cost = id === 'multimod' ? prices.multimod : prices.lock;
+      return '<div class="lock-card ' + (applied ? 'meta-applied' : '') + '"><h4>' + def.name + '</h4>' +
+        '<p>' + (id === 'lock_prefix' ? '保护前缀，适合前缀已经完成，只处理后缀。' : id === 'lock_suffix' ? '保护后缀，适合后缀已经完成，只处理前缀。' : '允许最多 3 条工艺词缀。多工艺本身占 1 条后缀。') + '</p>' +
+        '<button class="btn tiny ' + (reason ? 'ghost' : 'gold') + '" type="button" data-meta="' + id + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' + (applied ? '已应用' : '添加') + ' ' + costText(cost || 36) + '</button>' +
+        '<div class="meta-status">' + (applied ? '已占用 1 条' + (def.affix === 'prefix' ? '前缀' : '后缀') : (reason || '可用')) + '</div></div>';
+    };
+    html += '<div class="form-hint" style="margin-top:12px;margin-bottom:6px">meta 工艺（2 崇高；会占用真实的词缀位）</div>' +
+      '<div class="lock-grid">' + metaCard('lock_prefix') + metaCard('lock_suffix') + '</div>' +
+      '<div class="lock-grid" style="margin-top:6px">' + metaCard('multimod') + '</div>';
     body.innerHTML = html;
     $$('#action-body [data-bench]').forEach((b) => {
       b.onclick = () => chooseTool({ type: 'bench', benchId: b.dataset.bench });
     });
-    $$('#action-body [data-lock]').forEach((b) => {
-      b.onclick = () => {
-        const side = b.dataset.lock;
-        const method = b.dataset.method;
-        chooseTool({ type: method === 'scour' ? 'lock_scour' : 'lock_chaos', side });
-      };
+    $$('#action-body [data-meta]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: 'meta', metaId: b.dataset.meta });
     });
-    const mm = $('#btn-multimod');
-    if (mm) mm.onclick = () => chooseTool({ type: 'multimod' });
   }
 
   /* ------------------------------------------------------------------ perform */
@@ -2052,6 +2047,7 @@
       state.influences = parsed.item.influences || [];
       state.item = parsed.item;
       state.item.meta = state.item.meta || { multimod: false };
+      E.syncMetaFlags(state.item);
       state.item.influences = state.influences.slice();
       state.item.affixes = state.item.affixes || [];
       state.item.ilvl = state.item.ilvl || state.ilvl;

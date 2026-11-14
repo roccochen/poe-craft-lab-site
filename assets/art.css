@@ -492,3 +492,7 @@ body::before {
 
 .btn.danger { color: #dda091; border-color: rgba(216, 134, 124, .24); background: rgba(216, 134, 124, .035); }
 .btn.danger:hover:not(:disabled) { color: #f0b6a9; border-color: rgba(216, 134, 124, .5); background: rgba(216, 134, 124, .08); }
+
+.meta-status { margin-top: 5px; color: var(--muted-2); font-size: 9px; line-height: 1.5; }
+.lock-card.meta-applied { border-color: rgba(212, 176, 106, .34); background: rgba(212, 176, 106, .045); }
+.lock-card.meta-applied .meta-status { color: var(--gold-dim); }

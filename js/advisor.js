@@ -16,6 +16,8 @@
   D.essences.forEach((e) => { ESSENCE_BY_ID[e.id] = e; });
   const BENCH_BY_ID = {};
   D.bench.forEach((b) => { BENCH_BY_ID[b.id] = b; });
+  const META_BY_ID = {};
+  D.metaCrafts.forEach((m) => { META_BY_ID[m.id] = m; });
 
   function targetTags(targets) {
     const set = {};
@@ -114,6 +116,10 @@
       case 'lock_chaos': return '锁' + SIDE_NAME[action.side] + ' + 混沌';
       case 'lock_scour': return '锁' + SIDE_NAME[action.side] + ' + 重铸';
       case 'lock_exalt': return '锁' + SIDE_NAME[action.side] + ' + 崇高';
+      case 'meta': {
+        const m = META_BY_ID[action.metaId];
+        return m ? m.name : 'meta 工艺';
+      }
       case 'multimod': return '多重工艺';
       default: return '未知操作';
     }
@@ -148,6 +154,10 @@
       case 'lock_chaos': return '锁住' + SIDE_NAME[action.side] + '，只重铸另一侧，保护已完成的一侧。';
       case 'lock_scour': return '锁住' + SIDE_NAME[action.side] + '并清空另一侧，为工艺 / 崇高腾位置。';
       case 'lock_exalt': return '锁住' + SIDE_NAME[action.side] + '，只在另一侧增加词缀。';
+      case 'meta': {
+        const m = META_BY_ID[action.metaId];
+        return m ? m.desc : 'meta 工艺。';
+      }
       case 'multimod': return '允许最多 3 条工艺词缀。';
       default: return '';
     }
@@ -177,7 +187,7 @@
     const baseEval = E.evaluate(item, targets);
     const baseGroups = matchedGroupSet(baseEval);
     let complete = 0, improve = 0, regress = 0, valid = 0;
-    const n = action.type === 'bench' || action.type === 'multimod' ? 1 : samples;
+    const n = action.type === 'bench' || action.type === 'multimod' || action.type === 'meta' ? 1 : samples;
     for (let i = 0; i < n; i++) {
       const rng = E.makeRng((seed + i * 7919) >>> 0);
       const res = E.applyAction(item, action, { rng, prices });
