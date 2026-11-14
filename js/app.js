@@ -78,6 +78,7 @@
       nextPullAt: 0,
       pendingResult: null,
       selectedTool: null,
+      donor: null,
       view: 'gear',
       collapsed: { presets: false, base: false, targets: false, actions: false, log: false, plan: false },
     };
@@ -99,6 +100,7 @@
       state.nextPullAt = parsed.nextPullAt || 0;
       state.pendingResult = parsed.pendingResult && parsed.pendingResult.before && parsed.pendingResult.after ? parsed.pendingResult : null;
       state.selectedTool = parsed.selectedTool && parsed.selectedTool.type ? parsed.selectedTool : null;
+      state.donor = parsed.donor && parsed.donor.baseId && E.getBase(parsed.donor.baseId) ? parsed.donor : null;
       state.view = ['gear', 'targets', 'craft', 'log'].indexOf(parsed.view) !== -1 ? parsed.view : 'gear';
       state.collapsed = Object.assign({ presets: false, base: false, targets: false, actions: false, log: false, plan: false }, parsed.collapsed || {});
       state.item.meta = state.item.meta || { multimod: false };
@@ -143,7 +145,7 @@
           slot: state.slot, tab: state.tab, targetSide: state.targetSide,
           settings: state.settings, history: state.history.slice(-20),
           analysisNonce: state.analysisNonce, customTargets: state.customTargets,
-          configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null, selectedTool: state.selectedTool || null, view: state.view || 'gear',
+          configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null, selectedTool: state.selectedTool || null, donor: state.donor || null, view: state.view || 'gear',
           collapsed: state.collapsed || {},
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
@@ -828,6 +830,7 @@
     state.customTargets = false;
     state.pendingResult = null;
     state.selectedTool = null;
+    state.donor = null;
     state.fossilSelection = [];
     state.baseSearch = '';
     state.targetSearch = '';
@@ -844,6 +847,28 @@
     renderAll();
     switchView('gear');
     toast('已清空，重新开始。底子、目标、记录和花费都已重置。', 'success', 3500);
+  }
+  function donorEligibility(item) {
+    if (!item) return '请先制作 / 录入一件祭品。';
+    if (item.corrupted) return '祭品不能腐化。';
+    if (item.rarity !== 'rare') return '祭品必须是稀有物品。';
+    if (!item.influences || item.influences.length !== 1) return '祭品必须恰好有 1 个势力影响。';
+    if (!item.affixes.some((a) => a.influence)) return '祭品没有影响词缀。';
+    return null;
+  }
+  function saveCurrentAsDonor() {
+    const reason = donorEligibility(state.item);
+    if (reason) { toast(reason, 'error'); return; }
+    state.donor = E.clone(state.item);
+    save();
+    renderAll();
+    toast('已把当前物品保存为祭品。接下来换目标底子 / 势力，再回「势力合成」选择祭品词缀。', 'success', 5000);
+  }
+  function clearDonor() {
+    state.donor = null;
+    save();
+    renderAll();
+    toast('已清除祭品。');
   }
   function actionPhase(type) {
     if (type === 'transmute' || type === 'alchemy') return '起手';
@@ -1110,22 +1135,47 @@
   }
   function renderAwakenerActions(body) {
     const item = state.item;
-    let reason = null;
-    if (item.corrupted) reason = '物品已腐化，不能使用觉醒者之石。';
-    else if (item.rarity !== 'rare') reason = '觉醒者之石只能用于稀有物品。';
-    else if (!item.influences || item.influences.length !== 1) reason = '目标物品必须恰好有 1 个势力影响。';
-    if (reason) {
-      body.innerHTML = '<div class="action-none">' + esc(reason) + '</div>';
+    const donor = state.donor;
+    const infName = (id) => (D.influences.find((x) => x.id === id) || {}).name || id;
+    const targetReason = item.corrupted ? '物品已腐化，不能使用觉醒者之石。'
+      : item.rarity !== 'rare' ? '目标必须是稀有物品。'
+      : (!item.influences || item.influences.length !== 1) ? '目标必须恰好有 1 个势力影响。' : null;
+    if (donor) {
+      const donorInf = donor.influences && donor.influences[0];
+      const donorBase = E.getBase(donor.baseId);
+      const targetBase = E.getBase(item.baseId);
+      const donorMods = donor.affixes.filter((a) => a.influence === donorInf);
+      let reason = targetReason;
+      if (!reason && donorBase.slot !== targetBase.slot) reason = '祭品与目标必须是同一物品类别。';
+      if (!reason && donorInf === item.influences[0]) reason = '祭品势力必须与目标不同。';
+      if (!reason && !donorMods.length) reason = '祭品没有影响词缀。';
+      body.innerHTML = '<div class="awakener-note"><b>已保存祭品</b><p>' + esc(donorBase.name) + ' · ' + esc(infName(donorInf)) + '。合成后祭品会被销毁；请从下面选一条祭品影响词缀。</p></div>' +
+        (reason ? '<div class="action-none">' + esc(reason) + '</div>' : '') +
+        '<div class="donor-actions"><button class="btn tiny ghost" type="button" id="btn-clear-donor">清除祭品</button></div>' +
+        (reason ? '' : '<div class="awakener-grid">' + donorMods.map((a) => {
+          return '<button class="awakener-card" type="button" data-donor-mod="' + a.modId + '" data-donor-tier="' + a.tierIlvl + '">' +
+            '<span class="awakener-inf">' + esc(infName(donorInf)) + '</span>' +
+            '<b>' + esc(a.name || a.text) + '</b>' +
+            '<em>' + esc(a.text.replace(/\n/g, ' / ')) + '</em>' +
+            '<small>T' + a.tierRank + ' · iLv ' + a.tierIlvl + '</small></button>';
+        }).join('') + '</div>');
+      const clear = $('#btn-clear-donor');
+      if (clear) clear.onclick = clearDonor;
+      $$('#action-body [data-donor-mod]').forEach((b) => {
+        b.onclick = () => chooseTool({ type: 'awakener', donorInfluence: donorInf, donorModId: b.dataset.donorMod, donorTierIlvl: Number(b.dataset.donorTier) });
+      });
+      return;
+    }
+    if (targetReason) {
+      body.innerHTML = '<div class="action-none">' + esc(targetReason) + '</div>';
       return;
     }
     const mods = E.awakenerDonorMods(item);
-    if (!mods.length) {
-      body.innerHTML = '<div class="action-none">当前底子没有可用于祭品的其他势力词缀。</div>';
-      return;
-    }
-    const infName = (id) => (D.influences.find((x) => x.id === id) || {}).name || id;
-    body.innerHTML = '<div class="awakener-note"><b>觉醒者之石 · 双势力合成</b><p>祭品会用当前底子模拟，合成后被销毁；目标与祭品必须各有 1 个不同势力。结果保留双方各一条影响词缀，其余重铸为 6 词缀稀有物品。</p></div>' +
-      '<div class="awakener-grid">' + mods.map((m) => {
+    const saveReason = donorEligibility(item);
+    body.innerHTML = '<div class="awakener-note"><b>觉醒者之石 · 双势力合成</b><p>可以先点「保存当前为祭品」做真实的双物品流程；也可以直接用当前底子模拟一条祭品词缀。</p></div>' +
+      '<div class="donor-actions"><button class="btn ghost" type="button" id="btn-save-donor" ' + (saveReason ? 'disabled title="' + esc(saveReason) + '"' : '') + '>保存当前为祭品</button>' +
+      '<span class="donor-hint">' + esc(saveReason || '当前物品可作为祭品') + '</span></div>' +
+      (mods.length ? '<div class="awakener-grid">' + mods.map((m) => {
         const tiers = E.eligibleTiers(m, item.ilvl);
         const tier = tiers[tiers.length - 1];
         const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
@@ -1134,7 +1184,9 @@
           '<b>' + esc(m.name) + '</b>' +
           '<em>' + esc(preview) + '</em>' +
           '<small>最低 T' + E.tierRank(m, tier) + ' · iLv ' + tier.ilvl + '</small></button>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' : '<div class="action-none">当前底子没有可用于模拟祭品的其他势力词缀。</div>');
+    const saveBtn = $('#btn-save-donor');
+    if (saveBtn) saveBtn.onclick = saveCurrentAsDonor;
     $$('#action-body [data-awakener-mod]').forEach((b) => {
       b.onclick = () => chooseTool({ type: 'awakener', donorInfluence: b.dataset.awakenerInf, donorModId: b.dataset.awakenerMod });
     });
@@ -1223,9 +1275,11 @@
     if (res.error) { toast(res.error, 'error'); return false; }
     state.history.push({
       item: before, log: state.log.slice(), spent: state.spent, attempts: state.attempts,
+      donor: state.donor ? E.clone(state.donor) : null,
     });
     if (state.history.length > 40) state.history.shift();
     state.item = res.item;
+    if (action.type === 'awakener') state.donor = null;
     state.spent += res.cost;
     state.attempts++;
     state.routeStats = null;
@@ -1377,6 +1431,7 @@
     state.pendingResult = null;
     state.selectedTool = null;
     state.item = snap.item;
+    state.donor = snap.donor ? E.clone(snap.donor) : null;
     state.log = snap.log;
     state.spent = snap.spent;
     state.attempts = snap.attempts;
@@ -2087,7 +2142,7 @@
     const data = {
       app: 'poe1-craft-lab', version: 1, savedAt: new Date().toISOString(),
       baseId: state.baseId, ilvl: state.ilvl, influences: state.influences,
-      item: state.item, targets: state.targets, log: state.log,
+      item: state.item, donor: state.donor || null, targets: state.targets, log: state.log,
       spent: state.spent, attempts: state.attempts, settings: state.settings,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

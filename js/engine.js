@@ -815,7 +815,7 @@
         const donorInf = action.donorInfluence;
         const donorMod = modById[action.donorModId];
         const donorTiers = eligibleTiers(donorMod, next.ilvl);
-        const donorTier = pickTier(rng, donorMod, donorTiers);
+        const donorTier = (action.donorTierIlvl && donorTiers.find((t) => t.ilvl === action.donorTierIlvl)) || pickTier(rng, donorMod, donorTiers);
         const targetInfluenced = next.affixes.filter((a) => a.influence === targetInf);
         let keptTarget = targetInfluenced.length ? clone(targetInfluenced[randInt(rng, 0, targetInfluenced.length - 1)]) : null;
         if (keptTarget) rerollAffixValues(keptTarget, rng);
