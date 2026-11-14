@@ -1852,6 +1852,53 @@
     { id: 'warlord_exalt', name: '督军崇高石', influence: 'warlord' },
   ];
 
+  const eldritchAlternatives = {
+    exarch: {
+      helmet: { id: 'exarch_fire_damage', name: '火焰伤害', text: '火焰伤害提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [10, 10] }, { tier: 2, name: 'Greater', v: [12, 12] },
+        { tier: 3, name: 'Grand', v: [14, 14] }, { tier: 4, name: 'Exceptional', v: [16, 16] },
+        { tier: 5, name: 'Exquisite', v: [18, 18] }, { tier: 6, name: 'Perfect', v: [20, 20] },
+      ] },
+      body: { id: 'exarch_life', name: '最大生命', text: '+{0} 最大生命', tiers: [
+        { tier: 1, name: 'Lesser', v: [15, 15] }, { tier: 2, name: 'Greater', v: [18, 18] },
+        { tier: 3, name: 'Grand', v: [21, 21] }, { tier: 4, name: 'Exceptional', v: [24, 24] },
+        { tier: 5, name: 'Exquisite', v: [27, 27] }, { tier: 6, name: 'Perfect', v: [30, 30] },
+      ] },
+      gloves: { id: 'exarch_fire_damage_gloves', name: '火焰伤害', text: '火焰伤害提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [10, 10] }, { tier: 2, name: 'Greater', v: [12, 12] },
+        { tier: 3, name: 'Grand', v: [14, 14] }, { tier: 4, name: 'Exceptional', v: [16, 16] },
+        { tier: 5, name: 'Exquisite', v: [18, 18] }, { tier: 6, name: 'Perfect', v: [20, 20] },
+      ] },
+      boots: { id: 'exarch_fire_res', name: '火焰抗性', text: '+{0}% 火焰抗性', tiers: [
+        { tier: 1, name: 'Lesser', v: [10, 10] }, { tier: 2, name: 'Greater', v: [12, 12] },
+        { tier: 3, name: 'Grand', v: [14, 14] }, { tier: 4, name: 'Exceptional', v: [16, 16] },
+        { tier: 5, name: 'Exquisite', v: [18, 18] }, { tier: 6, name: 'Perfect', v: [20, 20] },
+      ] },
+    },
+    eater: {
+      helmet: { id: 'eater_life', name: '最大生命', text: '+{0} 最大生命', tiers: [
+        { tier: 1, name: 'Lesser', v: [15, 15] }, { tier: 2, name: 'Greater', v: [18, 18] },
+        { tier: 3, name: 'Grand', v: [21, 21] }, { tier: 4, name: 'Exceptional', v: [24, 24] },
+        { tier: 5, name: 'Exquisite', v: [27, 27] }, { tier: 6, name: 'Perfect', v: [30, 30] },
+      ] },
+      body: { id: 'eater_life_body', name: '最大生命', text: '+{0} 最大生命', tiers: [
+        { tier: 1, name: 'Lesser', v: [15, 15] }, { tier: 2, name: 'Greater', v: [18, 18] },
+        { tier: 3, name: 'Grand', v: [21, 21] }, { tier: 4, name: 'Exceptional', v: [24, 24] },
+        { tier: 5, name: 'Exquisite', v: [27, 27] }, { tier: 6, name: 'Perfect', v: [30, 30] },
+      ] },
+      gloves: { id: 'eater_attack_speed', name: '攻击速度', text: '攻击速度提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [4, 4] }, { tier: 2, name: 'Greater', v: [5, 5] },
+        { tier: 3, name: 'Grand', v: [6, 6] }, { tier: 4, name: 'Exceptional', v: [7, 7] },
+        { tier: 5, name: 'Exquisite', v: [8, 8] }, { tier: 6, name: 'Perfect', v: [9, 9] },
+      ] },
+      boots: { id: 'eater_move_speed', name: '移动速度', text: '移动速度提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [4, 4] }, { tier: 2, name: 'Greater', v: [5, 5] },
+        { tier: 3, name: 'Grand', v: [6, 6] }, { tier: 4, name: 'Exceptional', v: [7, 7] },
+        { tier: 5, name: 'Exquisite', v: [8, 8] }, { tier: 6, name: 'Perfect', v: [9, 9] },
+      ] },
+    },
+  };
+
   const data = {
     version: '1.0.1',
     configMode: 'static',
@@ -1883,7 +1930,7 @@
       { type: 'whetstone', name: '磨刀石', short: '磨', color: '#b8a58a', desc: '武器：品质 +1~5%，最高 20%', cost: 'whetstone' },
       { type: 'veiled_chaos', name: '隐秘混沌石', short: '隐混', color: '#b9a7d8', desc: '重铸稀有物品，并保证 1 条待揭露隐秘词缀', cost: 'veiledChaos' },
     ],
-    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits, influenceOrbs,
+    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits, eldritchAlternatives, influenceOrbs,
     ARMOUR, JEWEL, GEAR,
   };
 

@@ -643,6 +643,15 @@
       default: return '未知操作';
     }
   }
+  function eldritchPool(kind, slot) {
+    const base = D.eldritchImplicits[kind] && D.eldritchImplicits[kind][slot];
+    if (!base) return [];
+    return [base].concat((D.eldritchAlternatives[kind] || {})[slot] ? [D.eldritchAlternatives[kind][slot]] : []);
+  }
+  function eldritchDef(kind, slot, id) {
+    const pool = eldritchPool(kind, slot);
+    return pool.find((d) => d.id === id) || pool[0] || null;
+  }
   function eldritchAvailability(item, kind, tier) {
     if (item.corrupted) return '物品已腐化，不能使用 Eldritch 通货。';
     if (['helmet', 'body', 'gloves', 'boots'].indexOf(getBase(item.baseId).slot) === -1) return 'Eldritch 只能用于头盔 / 胸甲 / 手套 / 鞋子。';
@@ -1050,7 +1059,8 @@
         const reason = eldritchAvailability(next, action.kind, action.tier);
         if (reason) return fail(reason);
         const slot = getBase(next.baseId).slot;
-        const def = D.eldritchImplicits[action.kind] && D.eldritchImplicits[action.kind][slot];
+        const pool = eldritchPool(action.kind, slot);
+        const def = pool[randInt(rng, 0, pool.length - 1)];
         if (!def) return fail('该部位没有对应的 Eldritch 词缀。');
         const tierDef = def.tiers.find((t) => t.tier === action.tier);
         if (!tierDef) return fail('未知阶级。');
@@ -1126,8 +1136,8 @@
         const slot = getBase(next.baseId).slot;
         const raiseKind = rand(rng) < 0.5 ? 'exarch' : 'eater';
         const lowerKind = raiseKind === 'exarch' ? 'eater' : 'exarch';
-        const raiseDef = D.eldritchImplicits[raiseKind] && D.eldritchImplicits[raiseKind][slot];
-        const lowerDef = D.eldritchImplicits[lowerKind] && D.eldritchImplicits[lowerKind][slot];
+        const raiseDef = eldritchDef(raiseKind, slot, next.eldritch[raiseKind].id);
+        const lowerDef = eldritchDef(lowerKind, slot, next.eldritch[lowerKind].id);
         const raiseTier = Math.min(6, next.eldritch[raiseKind].tier + 1);
         const raiseInfo = raiseDef && raiseDef.tiers.find((t) => t.tier === raiseTier);
         if (raiseInfo) {
@@ -1570,7 +1580,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, veiledExaltAvailability, recombineAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    eldritchPool, eldritchDef, essenceAvailability, qualityAvailability, veiledExaltAvailability, recombineAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
