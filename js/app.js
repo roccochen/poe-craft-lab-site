@@ -67,6 +67,7 @@
       baseSearch: '',
       targetSearch: '',
       fossilSelection: [],
+      harvestMode: 'reforge',
       settings: baseSettings(),
       routeStats: null,
       analysisNonce: 0,
@@ -886,6 +887,7 @@
     if (type === 'divine') return '调数值';
     if (type === 'essence') return '保底';
     if (type === 'fossil' || type === 'harvest') return '重铸';
+    if (type === 'harvest_remove' || type === 'harvest_add' || type === 'harvest_augment') return '庄园';
     if (type === 'meta') return 'meta';
     if (type === 'vaal') return '腐化';
     if (type === 'awakener') return '势力合成';
@@ -1074,20 +1076,34 @@
   }
   function renderHarvestActions(body) {
     if (state.item.rarity !== 'rare') {
-      body.innerHTML = '<div class="action-none">庄园重铸只能用于稀有物品。</div>';
+      body.innerHTML = '<div class="action-none">庄园只能用于稀有物品。</div>';
       return;
     }
     const prices = priceOverrides();
-    body.innerHTML =
-      '<div class="form-hint" style="margin-bottom:8px">庄园重铸会重铸稀有物品，并保证至少一条所选标签的词缀。适合补指定标签，不适合保词缀。</div>' +
-      '<div class="harvest-grid">' + D.harvestTags.map((t) =>
-        '<button type="button" class="harvest-chip" data-harvest="' + t.id + '">' + t.name + '</button>'
-      ).join('') + '</div>' +
-      '<div class="harvest-note">每次消耗约 ' + costText(prices.harvest) + '（按当前价格估算），会重铸全部非破裂词缀。</div>';
+    const modes = [
+      { id: 'reforge', name: '重铸', desc: '重铸全部非破裂词缀，保证至少 1 条标签词缀' },
+      { id: 'harvest_remove', name: '定向移除', desc: '移除 1 条指定标签的非破裂词缀' },
+      { id: 'harvest_add', name: '定向添加', desc: '移除 1 条随机非破裂词缀，添加 1 条指定标签词缀' },
+      { id: 'harvest_augment', name: '定向增幅', desc: '在空位添加 1 条指定标签词缀' },
+    ];
+    if (!modes.some((m) => m.id === state.harvestMode)) state.harvestMode = 'reforge';
+    const mode = modes.find((m) => m.id === state.harvestMode);
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">' + esc(mode.desc) + '。当前每次约 ' + costText(prices.harvest) + '。</div>' +
+      '<div class="tabs tiny harvest-modes">' + modes.map((m) => '<button type="button" data-harvest-mode="' + m.id + '" class="' + (state.harvestMode === m.id ? 'active' : '') + '">' + m.name + '</button>').join('') + '</div>' +
+      '<div class="harvest-grid">' + D.harvestTags.map((t) => {
+        const reason = state.harvestMode === 'reforge' ? E.harvestAvailability(state.item, t.id) : E.harvestModeAvailability(state.item, t.id, state.harvestMode);
+        return '<button type="button" class="harvest-chip ' + (reason ? 'unavailable' : '') + '" data-harvest="' + t.id + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' + t.name + '</button>';
+      }).join('') + '</div>' +
+      '<div class="harvest-note">' + esc(mode.desc) + '。meta 锁前 / 锁后不会被移除。</div>';
+    $$('#action-body [data-harvest-mode]').forEach((b) => {
+      b.onclick = () => { state.harvestMode = b.dataset.harvestMode; renderActionBody(); };
+    });
     $$('#action-body [data-harvest]').forEach((b) => {
       b.onclick = () => {
-        if (state.item.rarity !== 'rare') { toast('庄园重铸只能用于稀有物品。', 'error'); return; }
-        chooseTool({ type: 'harvest', tag: b.dataset.harvest });
+        if (state.item.rarity !== 'rare') { toast('庄园只能用于稀有物品。', 'error'); return; }
+        const type = state.harvestMode;
+        if (type === 'reforge') chooseTool({ type: 'harvest', tag: b.dataset.harvest });
+        else chooseTool({ type, tag: b.dataset.harvest });
       };
     });
   }

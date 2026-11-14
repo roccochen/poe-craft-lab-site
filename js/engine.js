@@ -446,7 +446,10 @@
         const sum = ids.reduce((n, id) => n + (fossilById[id] ? fossilById[id].cost : 0), 0);
         return (sum + prices.resonator) * (prices.fossilMult || 1);
       }
-      case 'harvest': return prices.harvest;
+      case 'harvest':
+      case 'harvest_remove':
+      case 'harvest_add':
+      case 'harvest_augment': return prices.harvest;
       case 'bench': {
         const b = benchById[action.benchId];
         return b ? b.cost : 0;
@@ -570,7 +573,10 @@
       case 'lock_exalt': return item.rarity === 'rare' ? null : '该 meta 组合只能用于稀有物品';
       case 'essence': return (item.rarity === 'normal' || item.rarity === 'rare') ? null : '精华只能用于普通或稀有物品';
       case 'fossil': return item.rarity === 'rare' ? null : '化石只能用于稀有物品';
-      case 'harvest': return item.rarity === 'rare' ? null : '庄园重铸只能用于稀有物品';
+      case 'harvest':
+      case 'harvest_remove':
+      case 'harvest_add':
+      case 'harvest_augment': return item.rarity === 'rare' ? null : '庄园只能用于稀有物品';
       default: return '未知操作';
     }
   }
@@ -680,6 +686,25 @@
     if (item.corrupted) return '物品已腐化，不能使用庄园。';
     if (item.rarity !== 'rare') return '庄园重铸只能用于稀有物品。';
     if (!tag) return '请选择庄园标签。';
+    return null;
+  }
+  function harvestModeAvailability(item, tag, mode) {
+    if (item.corrupted) return '物品已腐化，不能使用庄园。';
+    if (item.rarity !== 'rare') return '庄园只能用于稀有物品。';
+    if (!tag) return '请选择庄园标签。';
+    const locks = lockedSides(item);
+    if (mode === 'harvest_remove') {
+      const removable = item.affixes.filter((a) => !a.fractured && !locks[a.affix] && (a.tags || []).indexOf(tag) !== -1);
+      return removable.length ? null : '没有可移除的「' + tag + '」标签词缀。';
+    }
+    if (mode === 'harvest_add') {
+      const removable = item.affixes.filter((a) => !a.fractured && !locks[a.affix]);
+      return removable.length ? null : '没有可移除的词缀。';
+    }
+    if (mode === 'harvest_augment') {
+      if (!canAdd(item, 'prefix') && !canAdd(item, 'suffix')) return '词缀已满，无法定向增幅。';
+      return null;
+    }
     return null;
   }
   function applyAction(item, action, ctx) {
@@ -886,6 +911,45 @@
           tier: tierDef.tier, tierName: tierDef.name,
         };
         message = 'Eldritch：获得' + (action.kind === 'exarch' ? '灼热' : '吞噬') + tierDef.name + '基底「' + next.eldritch[action.kind].text + '」。';
+        break;
+      }
+      case 'harvest_remove': {
+        const reason = harvestModeAvailability(next, action.tag, 'harvest_remove');
+        if (reason) return fail(reason);
+        const locks = lockedSides(next);
+        const removable = next.affixes.filter((a) => !a.fractured && !locks[a.affix] && (a.tags || []).indexOf(action.tag) !== -1);
+        const victim = removable[randInt(rng, 0, removable.length - 1)];
+        next.affixes = next.affixes.filter((a) => a !== victim);
+        normalizeRarity(next);
+        message = '庄园定向移除：移除了「' + victim.text.split('\n')[0] + '」。';
+        break;
+      }
+      case 'harvest_add': {
+        const reason = harvestModeAvailability(next, action.tag, 'harvest_add');
+        if (reason) return fail(reason);
+        const locks = lockedSides(next);
+        const removable = next.affixes.filter((a) => !a.fractured && !locks[a.affix]);
+        const victim = removable[randInt(rng, 0, removable.length - 1)];
+        next.affixes = next.affixes.filter((a) => a !== victim);
+        next.rarity = 'rare';
+        const sides = ['prefix', 'suffix'].filter((side) => !locks[side] && canAdd(next, side) && candidatesFor(next, side, { onlyTag: action.tag }).length);
+        if (!sides.length) return fail('移除后没有可添加的「' + action.tag + '」标签词缀。');
+        const side = sides[randInt(rng, 0, sides.length - 1)];
+        const aff = addRandomAffix(next, side, rng, { onlyTag: action.tag });
+        if (!aff) return fail('移除后没有可添加的「' + action.tag + '」标签词缀。');
+        message = '庄园定向添加：移除「' + victim.text.split('\n')[0] + '」，添加「' + aff.text.split('\n')[0] + '」。';
+        break;
+      }
+      case 'harvest_augment': {
+        const reason = harvestModeAvailability(next, action.tag, 'harvest_augment');
+        if (reason) return fail(reason);
+        const locks = lockedSides(next);
+        const sides = ['prefix', 'suffix'].filter((side) => !locks[side] && canAdd(next, side) && candidatesFor(next, side, { onlyTag: action.tag }).length);
+        if (!sides.length) return fail('没有可添加的「' + action.tag + '」标签词缀或空位。');
+        const side = sides[randInt(rng, 0, sides.length - 1)];
+        const aff = addRandomAffix(next, side, rng, { onlyTag: action.tag });
+        if (!aff) return fail('没有可添加的「' + action.tag + '」标签词缀。');
+        message = '庄园定向增幅：添加「' + aff.text.split('\n')[0] + '」。';
         break;
       }
       case 'essence': {
@@ -1152,7 +1216,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

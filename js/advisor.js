@@ -115,6 +115,9 @@
         return names.length ? names.join(' + ') : '化石重铸';
       }
       case 'harvest': return '庄园 · ' + (TAG_NAME[action.tag] || action.tag);
+      case 'harvest_remove': return '庄园移除 · ' + (TAG_NAME[action.tag] || action.tag);
+      case 'harvest_add': return '庄园添加 · ' + (TAG_NAME[action.tag] || action.tag);
+      case 'harvest_augment': return '庄园增幅 · ' + (TAG_NAME[action.tag] || action.tag);
       case 'bench': {
         const b = BENCH_BY_ID[action.benchId];
         return b ? '工艺 · ' + b.name : '工艺台';
@@ -158,6 +161,9 @@
         return fossils.map((f) => f.desc).join('；') + '。';
       }
       case 'harvest': return '重铸并保证至少一条「' + (TAG_NAME[action.tag] || action.tag) + '」标签词缀。';
+      case 'harvest_remove': return '定向移除一条「' + (TAG_NAME[action.tag] || action.tag) + '」标签词缀。';
+      case 'harvest_add': return '移除一条随机词缀，并添加一条「' + (TAG_NAME[action.tag] || action.tag) + '」标签词缀。';
+      case 'harvest_augment': return '在空位添加一条「' + (TAG_NAME[action.tag] || action.tag) + '」标签词缀。';
       case 'bench': {
         const b = BENCH_BY_ID[action.benchId];
         if (!b) return '工艺台固定词缀。';
