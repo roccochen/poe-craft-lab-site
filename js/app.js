@@ -77,6 +77,7 @@
       configMeta: null,
       nextPullAt: 0,
       pendingResult: null,
+      collapsed: { presets: false, base: false, targets: false, actions: false, log: false, plan: false },
     };
   }
   function loadState() {
@@ -93,6 +94,7 @@
       state.configMeta = parsed.configMeta || null;
       state.nextPullAt = parsed.nextPullAt || 0;
       state.pendingResult = parsed.pendingResult && parsed.pendingResult.before && parsed.pendingResult.after ? parsed.pendingResult : null;
+      state.collapsed = Object.assign({ presets: false, base: false, targets: false, actions: false, log: false, plan: false }, parsed.collapsed || {});
       state.item.meta = state.item.meta || { multimod: false };
       state.item.influences = state.item.influences || [];
       state.item.affixes = state.item.affixes || [];
@@ -135,6 +137,7 @@
           settings: state.settings, history: state.history.slice(-20),
           analysisNonce: state.analysisNonce, customTargets: state.customTargets,
           configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null,
+          collapsed: state.collapsed || {},
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
       } catch (e) { /* 本地存储不可用时静默降级 */ }
@@ -1861,6 +1864,23 @@
   }
 
   /* ------------------------------------------------------------------ static bind */
+  function applyCollapsedState() {
+    $$('[data-collapse]').forEach((btn) => {
+      const key = btn.dataset.collapse;
+      const section = btn.closest('.collapsible');
+      if (!section) return;
+      const collapsed = !!state.collapsed[key];
+      section.classList.toggle('collapsed', collapsed);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      const label = btn.querySelector('.collapse-label');
+      if (label) label.textContent = collapsed ? '展开' : '收起';
+    });
+  }
+  function toggleCollapse(key) {
+    state.collapsed[key] = !state.collapsed[key];
+    save();
+    applyCollapsedState();
+  }
   function bindStatic() {
     $$('#journey [data-jump]').forEach((btn) => {
       btn.onclick = () => {
@@ -1872,6 +1892,10 @@
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       };
     });
+    $$('[data-collapse]').forEach((btn) => {
+      btn.onclick = () => toggleCollapse(btn.dataset.collapse);
+    });
+    applyCollapsedState();
     const guideBtn = $('#journey-guide');
     if (guideBtn) guideBtn.onclick = openGuide;
     $$('.help-dot').forEach((dot) => {
@@ -1972,6 +1996,7 @@
     renderResultPrompt();
     renderAutoButton();
     renderConfigBadge();
+    applyCollapsedState();
     $('#ilvl-input').value = state.ilvl;
     $('#base-search').value = state.baseSearch || '';
     $('#target-search').value = state.targetSearch || '';

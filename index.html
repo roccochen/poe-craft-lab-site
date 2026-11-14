@@ -67,47 +67,56 @@
     <main class="layout">
       <!-- 左栏：底子 / 目标 -->
       <aside class="panel left-panel">
-        <section class="block" id="step-base">
+        <section class="block collapsible" id="section-presets">
+          <div class="block-head">
+            <h2><span class="quick-mark">快捷</span>快速模板 <span class="help-dot" tabindex="0" title="不知道怎么选目标时，先点一个模板。它会帮你把底子和目标都设好。" aria-label="快速模板说明">?</span></h2>
+            <button class="collapse-toggle" type="button" data-collapse="presets" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
+          </div>
+          <div class="section-body">
+            <p class="block-desc">第一次用？直接点一个模板，目标会自动填好。左右滑动查看更多。</p>
+            <div class="preset-list preset-strip" id="preset-list"></div>
+          </div>
+        </section>
+
+        <section class="block collapsible" id="step-base">
           <div class="block-head">
             <h2><span class="step-no">01</span>选择底子 <span class="help-dot" tabindex="0" title="底子就是你要做的装备类型。先选槽位，再点具体底子。" aria-label="底子说明">?</span></h2>
             <span class="block-hint" id="base-count"></span>
+            <button class="collapse-toggle" type="button" data-collapse="base" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
           </div>
-          <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
-          <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
-          <div class="field search-field">
-            <span class="field-icon" aria-hidden="true">⌕</span>
-            <input id="base-search" type="search" placeholder="搜索底子名称 / 英文名" autocomplete="off">
+          <div class="section-body">
+            <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
+            <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
+            <div class="field search-field">
+              <span class="field-icon" aria-hidden="true">⌕</span>
+              <input id="base-search" type="search" placeholder="搜索底子名称 / 英文名" autocomplete="off">
+            </div>
+            <div class="base-list" id="base-list"></div>
           </div>
-          <div class="base-list" id="base-list"></div>
         </section>
 
-        <section class="block" id="step-targets">
+        <section class="block collapsible" id="step-targets">
           <div class="block-head">
             <h2><span class="step-no">02</span>目标词缀 <span class="help-dot" tabindex="0" title="目标词缀 = 你希望最后装备上出现的属性。T1 最好，T4 较低，品级越高越难。" aria-label="目标词缀说明">?</span></h2>
             <span class="block-hint" id="target-count">0 / 6</span>
+            <button class="collapse-toggle" type="button" data-collapse="targets" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
           </div>
-          <p class="block-desc">挑你最终想保留的属性。T1 最好、T4 较低；先选 2–3 条，不要一次贪多。</p>
-          <div class="target-list" id="target-list"></div>
+          <div class="section-body">
+            <p class="block-desc">挑你最终最想保留的属性。T1 最好、T4 较低；先选 2–3 条，不要一次贪多。</p>
+            <div class="target-list" id="target-list"></div>
 
-          <div class="target-builder">
-            <div class="builder-head">
-              <span class="mini-title">添加词缀</span>
-              <div class="tabs tiny" id="target-side-tabs"></div>
+            <div class="target-builder">
+              <div class="builder-head">
+                <span class="mini-title">添加词缀</span>
+                <div class="tabs tiny" id="target-side-tabs"></div>
+              </div>
+              <div class="field search-field compact">
+                <span class="field-icon" aria-hidden="true">⌕</span>
+                <input id="target-search" type="search" placeholder="搜索词缀 / 标签" autocomplete="off">
+              </div>
+              <div class="target-pool" id="target-pool"></div>
             </div>
-            <div class="field search-field compact">
-              <span class="field-icon" aria-hidden="true">⌕</span>
-              <input id="target-search" type="search" placeholder="搜索词缀 / 标签" autocomplete="off">
-            </div>
-            <div class="target-pool" id="target-pool"></div>
           </div>
-        </section>
-
-        <section class="block">
-          <div class="block-head">
-            <h2><span class="step-no">03</span>快速模板 <span class="help-dot" tabindex="0" title="不知道怎么选目标时，先点一个模板。它会帮你把底子和目标都设好。" aria-label="快速模板说明">?</span></h2>
-          </div>
-          <p class="block-desc">第一次用？直接点一个模板，目标会自动填好。</p>
-          <div class="preset-list" id="preset-list"></div>
         </section>
       </aside>
 
@@ -137,21 +146,24 @@
         <section class="result-prompt" id="result-prompt" aria-label="这一步结果确认" aria-live="polite" hidden></section>
         <section class="mobile-next" id="mobile-next" hidden></section>
 
-        <section class="action-panel panel-flat" id="step-craft">
+        <section class="action-panel panel-flat collapsible" id="step-craft">
           <div class="panel-head">
             <div>
               <h2>做装操作 <span class="help-dot" tabindex="0" title="每一次操作前，顾问会先估算成功率和花费。不知道选哪个，就按顾问首选。" aria-label="做装操作说明">?</span></h2>
               <p id="action-hint">先从顾问推荐开始；想自己选，再点下面的通货。</p>
             </div>
             <div class="panel-head-actions">
+              <button class="collapse-toggle" type="button" data-collapse="actions" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
               <button class="btn gold" id="btn-auto" type="button" title="模拟连续推演，不逐步确认结果；真实做装请手动执行每一步。最多 30 步 / 1500c">连续执行</button>
             </div>
           </div>
-          <div class="tabs action-tabs" id="action-tabs" role="tablist"></div>
-          <div class="action-body" id="action-body"></div>
+          <div class="section-body">
+            <div class="tabs action-tabs" id="action-tabs" role="tablist"></div>
+            <div class="action-body" id="action-body"></div>
+          </div>
         </section>
 
-        <section class="log-panel panel-flat">
+        <section class="log-panel panel-flat collapsible">
           <div class="panel-head">
             <div>
               <h2>制作记录 <span class="help-dot" tabindex="0" title="每一步都会记录。做错了可以点撤销，不会丢档。" aria-label="制作记录说明">?</span></h2>
@@ -160,9 +172,12 @@
             <div class="log-stats">
               <span>花费 <b id="spent-total">0c</b></span>
               <span>操作 <b id="attempt-total">0</b></span>
+              <button class="collapse-toggle" type="button" data-collapse="log" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
             </div>
           </div>
-          <div class="craft-log" id="craft-log"></div>
+          <div class="section-body">
+            <div class="craft-log" id="craft-log"></div>
+          </div>
         </section>
       </section>
 
@@ -196,16 +211,19 @@
           <div class="recommendations" id="recommendations"></div>
         </div>
 
-        <div class="advisor-section">
+        <div class="advisor-section collapsible">
           <div class="section-title">
             <h3>推荐顺序</h3>
             <span class="section-note" id="plan-title">动态</span>
+            <button class="collapse-toggle" type="button" data-collapse="plan" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
           </div>
-          <div class="plan-card" id="route-plan"></div>
-          <div class="route-actions">
-            <button class="btn ghost wide" id="btn-sim-route" type="button">估算整套要花多少</button>
+          <div class="section-body">
+            <div class="plan-card" id="route-plan"></div>
+            <div class="route-actions">
+              <button class="btn ghost wide" id="btn-sim-route" type="button">估算整套要花多少</button>
+            </div>
+            <div class="route-stats" id="route-stats"></div>
           </div>
-          <div class="route-stats" id="route-stats"></div>
         </div>
 
         <footer class="advisor-foot">
