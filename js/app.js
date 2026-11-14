@@ -737,8 +737,9 @@
         if (a.essence) tagBits.push('精华');
         if (a.crafted) tagBits.push('工艺');
         if (a.meta) tagBits.push('meta');
+        if (a.veiled) tagBits.push('隐秘');
         if (a.fractured) tagBits.push('破裂');
-        return '<li class="item-mod ' + a.affix + (a.crafted ? ' crafted' : '') + (a.fractured ? ' fractured' : '') + (a.essence ? ' essence' : '') + '">' +
+        return '<li class="item-mod ' + a.affix + (a.crafted ? ' crafted' : '') + (a.fractured ? ' fractured' : '') + (a.essence ? ' essence' : '') + (a.veiled ? ' veiled' : '') + '">' +
           '<span class="mod-text">' + mdText(a.text) + '</span>' +
           '<span class="mod-tag">' + esc(tagBits.join(' · ')) + '</span></li>';
       }).join('') + '</ul>'
@@ -854,6 +855,7 @@
     if (type === 'meta') return 'meta';
     if (type === 'vaal') return '腐化';
     if (type === 'awakener') return '势力合成';
+    if (type === 'aisling' || type === 'unveil') return '隐秘';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -891,7 +893,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'aisling', name: '爱斯琳' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -900,6 +902,7 @@
       harvest: '按标签重铸，适合中级 / 高级玩家',
       bench: '收尾补一条固定工艺词缀',
       awakener: '双势力合成：保留目标与祭品各一条影响词缀',
+      aisling: '添加 / 揭露隐秘词缀',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -931,6 +934,7 @@
     else if (state.tab === 'harvest') renderHarvestActions(body);
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
+    else if (state.tab === 'aisling') renderAislingActions(body);
     else if (state.tab === 'awakener') renderAwakenerActions(body);
     else renderBenchActions(body);
   }
@@ -1076,6 +1080,33 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderAislingActions(body) {
+    const prices = priceOverrides();
+    const item = state.item;
+    if (E.unveilAvailability(item) === null) {
+      const choices = E.veiledChoices(item, E.makeRng(1));
+      body.innerHTML = '<div class="awakener-note"><b>揭露隐秘词缀</b><p>爱斯琳已经留下一条隐秘词缀。从下面三个选项里选一个，替换掉待揭露的隐秘词缀。</p></div>' +
+        '<div class="veil-grid">' + choices.map((m) => {
+          const preview = E.formatText(m.text, m.v.map((r) => (r[0] + r[1]) / 2));
+          return '<button class="veil-card" type="button" data-unveil-mod="' + m.id + '" ' + (state.pendingResult ? 'disabled' : '') + '>' +
+            '<span class="side-badge ' + m.affix + '">' + (m.affix === 'prefix' ? '前' : '后') + '</span>' +
+            '<b>' + esc(m.name) + '</b><em>' + esc(preview) + '</em></button>';
+        }).join('') + '</div>';
+      $$('#action-body [data-unveil-mod]').forEach((b) => {
+        b.onclick = () => performAction({ type: 'unveil', veiledModId: b.dataset.unveilMod });
+      });
+      return;
+    }
+    const reason = E.aislingAvailability(item);
+    if (reason) {
+      body.innerHTML = '<div class="action-none">' + esc(reason) + '</div>';
+      return;
+    }
+    body.innerHTML = '<div class="awakener-note"><b>爱斯琳 · 隐秘词缀</b><p>给稀有物品添加一条隐秘词缀，占 1 条前缀或后缀；之后从 3 个选项中揭露 1 条。</p></div>' +
+      '<div class="aisling-action"><button class="btn gold" type="button" id="btn-aisling">添加隐秘词缀 · ' + costText(prices.aisling || 160) + '</button></div>';
+    const btn = $('#btn-aisling');
+    if (btn) btn.onclick = () => chooseTool({ type: 'aisling' });
   }
   function renderAwakenerActions(body) {
     const item = state.item;
@@ -1963,7 +1994,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length

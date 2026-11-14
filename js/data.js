@@ -884,7 +884,7 @@
   const prices = {
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
-    divine: 200, resonator: 1, harvest: 15, awakener: 120,
+    divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
   };
@@ -1009,6 +1009,23 @@
     belt: ['+(10-15) to all Attributes', '+(20-30)% to Chaos Resistance', '(10-15)% increased Flask Effect Duration'],
   };
 
+  const veiledMods = [
+    { id: 'veiled_life', name: '最大生命', affix: 'prefix', group: 'life', text: '+{0} 最大生命', v: [[80, 89]], slots: GEAR },
+    { id: 'veiled_life_pct', name: '最大生命提高', affix: 'prefix', group: 'life_pct', text: '{0}% 最大生命提高', v: [[8, 10]], slots: ['body', 'helmet', 'belt'] },
+    { id: 'veiled_es', name: '最大能量护盾', affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', v: [[80, 100]], slots: ARMOUR },
+    { id: 'veiled_ar', name: '护甲提高', affix: 'prefix', group: 'ar_pct', text: '{0}% 护甲提高', v: [[25, 35]], slots: ARMOUR },
+    { id: 'veiled_ev', name: '闪避值提高', affix: 'prefix', group: 'ev_pct', text: '{0}% 闪避值提高', v: [[25, 35]], slots: ARMOUR },
+    { id: 'veiled_all_attr', name: '全属性', affix: 'suffix', group: 'all_attributes', text: '+{0} 全部属性', v: [[15, 20]], slots: GEAR },
+    { id: 'veiled_fire_res', name: '火焰抗性', affix: 'suffix', group: 'res_fire', text: '+{0}% 火焰抗性', v: [[40, 45]], slots: GEAR },
+    { id: 'veiled_cold_res', name: '冰霜抗性', affix: 'suffix', group: 'res_cold', text: '+{0}% 冰霜抗性', v: [[40, 45]], slots: GEAR },
+    { id: 'veiled_light_res', name: '闪电抗性', affix: 'suffix', group: 'res_light', text: '+{0}% 闪电抗性', v: [[40, 45]], slots: GEAR },
+    { id: 'veiled_chaos_res', name: '混沌抗性', affix: 'suffix', group: 'res_chaos', text: '+{0}% 混沌抗性', v: [[25, 30]], slots: GEAR },
+    { id: 'veiled_attack_speed', name: '攻击速度', affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', v: [[10, 12]], slots: ['gloves', 'weapon', 'quiver'] },
+    { id: 'veiled_cast_speed', name: '施法速度', affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', v: [[10, 12]], slots: ['gloves', 'ring', 'amulet', 'weapon'] },
+    { id: 'veiled_crit_multi', name: '暴击伤害加成', affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', v: [[20, 25]], slots: ['ring', 'amulet', 'weapon'] },
+    { id: 'veiled_move_speed', name: '移动速度', affix: 'suffix', group: 'move_speed', text: '移动速度提高 {0}%', v: [[25, 30]], slots: ['boots'] },
+  ];
+
   const data = {
     version: '1.0.1',
     configMode: 'static',
@@ -1026,7 +1043,7 @@
       { type: 'divine', name: '神圣石', short: '圣', color: '#e7d8b0', desc: '魔法 / 稀有：重掷数值', cost: 'divine' },
       { type: 'vaal', name: '瓦尔宝珠', short: '瓦', color: '#d28b8b', desc: '腐化：可能加腐化基底 / 变稀有 / 无变化', cost: 'vaal' },
     ],
-    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits,
+    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods,
     ARMOUR, JEWEL, GEAR,
   };
 

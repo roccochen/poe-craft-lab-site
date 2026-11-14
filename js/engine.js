@@ -67,6 +67,8 @@
   D.essences.forEach((e) => { essenceById[e.id] = e; });
   const metaById = {};
   D.metaCrafts.forEach((m) => { metaById[m.id] = m; });
+  const veilById = {};
+  D.veiledMods.forEach((m) => { veilById[m.id] = m; });
   const AWAKENER_ORDER = ['shaper', 'elder', 'crusader', 'redeemer', 'hunter', 'warlord'];
   const fossilById = {};
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
@@ -431,6 +433,8 @@
       case 'scour': return prices.scour;
       case 'divine': return prices.divine;
       case 'vaal': return prices.vaal;
+      case 'aisling': return prices.aisling || 160;
+      case 'unveil': return 0;
       case 'awakener': return prices.awakener || 120;
       case 'essence': {
         const e = essenceById[action.essenceId];
@@ -553,6 +557,8 @@
         if (item.rarity !== 'magic' && item.rarity !== 'rare') return '神圣石只能用于魔法或稀有物品';
         return item.affixes.length ? null : '没有可重掷数值的词缀';
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
+      case 'aisling': return item.rarity === 'rare' ? null : '爱斯琳只能用于稀有物品';
+      case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
       case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
       case 'meta': return item.rarity === 'rare' ? null : 'meta 工艺只能用于稀有物品';
@@ -565,6 +571,54 @@
       case 'harvest': return item.rarity === 'rare' ? null : '庄园重铸只能用于稀有物品';
       default: return '未知操作';
     }
+  }
+  function veiledAffix(item) {
+    return item.affixes.find((a) => a.veiled);
+  }
+  function aislingAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能使用爱斯琳。';
+    if (item.rarity !== 'rare') return '爱斯琳只能用于稀有物品。';
+    if (veiledAffix(item)) return '物品已经有一条待揭露的隐秘词缀。';
+    if (!canAdd(item, 'prefix') && !canAdd(item, 'suffix')) return '词缀已满，没有位置添加隐秘词缀。';
+    return null;
+  }
+  function unveilAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能揭露隐秘词缀。';
+    if (!veiledAffix(item)) return '物品没有待揭露的隐秘词缀。';
+    return null;
+  }
+  function veiledChoices(item, rng) {
+    if (unveilAvailability(item)) return [];
+    if (item.veiledOptions && item.veiledOptions.length) {
+      return item.veiledOptions.map((id) => veilById[id]).filter(Boolean);
+    }
+    const base = getBase(item.baseId);
+    const stripped = clone(item);
+    stripped.affixes = stripped.affixes.filter((a) => !a.veiled);
+    const pool = D.veiledMods.filter((mod) => {
+      if (!modEligibleOnBase(mod, base, stripped)) return false;
+      return canAdd(stripped, mod.affix) && !existingGroups(stripped)[mod.group];
+    });
+    const picks = [];
+    const used = {};
+    let guard = 0;
+    while (picks.length < 3 && pool.length && guard++ < 80) {
+      const mod = pool[randInt(rng, 0, pool.length - 1)];
+      if (used[mod.group]) continue;
+      used[mod.group] = true;
+      picks.push(mod);
+    }
+    return picks;
+  }
+  function addVeiledAffix(item, side) {
+    const aff = {
+      uid: uidCounter++, id: 'veiled_pending', modId: 'veiled_pending', name: '隐秘词缀',
+      affix: side, group: 'veiled_pending', text: '隐秘词缀', values: [], tiers: [],
+      tierRank: 0, tierIlvl: 1, tierName: '隐秘', tags: ['veiled'],
+      crafted: false, fractured: false, essence: false, influence: null, veiled: true,
+    };
+    item.affixes.push(aff);
+    return aff;
   }
   function essenceAvailability(item, essence) {
     if (!essence) return '未知精华。';
@@ -782,6 +836,31 @@
           (addDonor ? '与祭品「' + donorAff.text.split('\n')[0] + '」' : '（祭品词缀与目标同组，未保留）') + '，重铸为双势力稀有物品。';
         break;
       }
+      case 'aisling': {
+        const reason = aislingAvailability(next);
+        if (reason) return fail(reason);
+        const sides = ['prefix', 'suffix'].filter((side) => canAdd(next, side));
+        if (!sides.length) return fail('没有空位添加隐秘词缀。');
+        const side = sides[randInt(rng, 0, sides.length - 1)];
+        addVeiledAffix(next, side);
+        next.veiledOptions = veiledChoices(next, rng).map((m) => m.id);
+        message = '爱斯琳：添加一条待揭露的隐秘词缀，占用 1 条' + (side === 'prefix' ? '前缀' : '后缀') + '。';
+        break;
+      }
+      case 'unveil': {
+        const reason = unveilAvailability(next);
+        if (reason) return fail(reason);
+        const def = veilById[action.veiledModId];
+        if (!def) return fail('未知隐秘词缀。');
+        const choices = veiledChoices(next, rng);
+        if (!choices.some((m) => m.id === def.id)) return fail('这条隐秘词缀不在本次揭露选项中。');
+        next.affixes = next.affixes.filter((a) => !a.veiled);
+        delete next.veiledOptions;
+        const aff = makeCustomAffix(def, rng, { tierRank: 1, tierIlvl: 1, name: def.name });
+        next.affixes.push(aff);
+        message = '揭露隐秘词缀：获得「' + aff.text.split('\n')[0] + '」。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -921,7 +1000,7 @@
     if (item.affixes.length) {
       lines.push('--------');
       item.affixes.forEach((a) => {
-        const tag = a.fractured ? ' [破裂]' : a.crafted ? ' [工艺]' : a.essence ? ' [精华]' : '';
+        const tag = a.fractured ? ' [破裂]' : a.crafted ? ' [工艺]' : a.essence ? ' [精华]' : a.veiled ? ' [隐秘]' : '';
         a.text.split('\n').forEach((l) => lines.push(l + (l === a.text.split('\n')[0] ? (a.meta ? '' : '  ' + tierLabel(a.tierRank)) + tag : '')));
       });
     }
@@ -1043,7 +1122,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

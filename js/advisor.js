@@ -103,6 +103,8 @@
       case 'divine': return '神圣石调数值';
       case 'vaal': return '瓦尔腐化';
       case 'awakener': return '觉醒者之石 · 双势力';
+      case 'aisling': return '爱斯琳 · 隐秘词缀';
+      case 'unveil': return '揭露隐秘词缀';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         return e ? (e.tierName + e.name + '精华') : '精华';
@@ -141,6 +143,8 @@
       case 'divine': return '重掷数值，不改词缀和品级。';
       case 'vaal': return '腐化物品；可能获得腐化基底、变成 6 词缀稀有，或没有额外变化。';
       case 'awakener': return '双势力合成：保留目标与祭品各一条影响词缀，其余重铸。';
+      case 'aisling': return '给稀有物品添加一条待揭露的隐秘词缀。';
+      case 'unveil': return '从 3 个隐秘选项中选择 1 条，替换待揭露词缀。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
         const desc = e && essenceDesc(e, item);
@@ -193,7 +197,7 @@
     const baseEval = E.evaluate(item, targets);
     const baseGroups = matchedGroupSet(baseEval);
     let complete = 0, improve = 0, regress = 0, valid = 0;
-    const n = action.type === 'bench' || action.type === 'multimod' || action.type === 'meta' || action.type === 'awakener' ? 1 : samples;
+    const n = action.type === 'bench' || action.type === 'multimod' || action.type === 'meta' || action.type === 'awakener' || action.type === 'aisling' || action.type === 'unveil' ? 1 : samples;
     for (let i = 0; i < n; i++) {
       const rng = E.makeRng((seed + i * 7919) >>> 0);
       const res = E.applyAction(item, action, { rng, prices });
