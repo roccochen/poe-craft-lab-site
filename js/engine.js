@@ -211,6 +211,8 @@
       if (!modEligibleOnBase(mod, base, item)) continue;
       if (opts.onlyTag && mod.tags.indexOf(opts.onlyTag) === -1) continue;
       if (opts.influence && mod.influence !== opts.influence) continue;
+      if (item.affixes.some((a) => a.group === 'meta_no_attack') && mod.tags.indexOf('attack') !== -1) continue;
+      if (item.affixes.some((a) => a.group === 'meta_no_caster') && mod.tags.indexOf('caster') !== -1) continue;
       const tiers = eligibleTiers(mod, item.ilvl);
       if (!tiers.length) continue;
       let w = mod.weight;
@@ -357,6 +359,7 @@
   function clearForReroll(item, preserve) {
     const keep = item.affixes.filter((a) => {
       if (a.fractured) return true;
+      if (a.group === 'meta_no_attack' || a.group === 'meta_no_caster') return true;
       if (preserve && preserve.indexOf(a.affix) !== -1) return true;
       return false;
     });

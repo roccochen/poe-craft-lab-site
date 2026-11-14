@@ -876,6 +876,8 @@
     { id: 'lock_prefix', name: '前缀无法改变', cost: 36, affix: 'suffix', group: 'meta_lock_prefix', text: '前缀无法改变', desc: '锁住前缀，用于剥离 / 重铸后缀' },
     { id: 'lock_suffix', name: '后缀无法改变', cost: 36, affix: 'prefix', group: 'meta_lock_suffix', text: '后缀无法改变', desc: '锁住后缀，用于剥离 / 重铸前缀' },
     { id: 'multimod', name: '多重工艺', cost: 36, affix: 'suffix', group: 'meta_multimod', text: '多重工艺', desc: '允许最多 3 条工艺台词缀' },
+    { id: 'no_attack', name: '不能出现攻击词缀', cost: 36, affix: 'suffix', group: 'meta_no_attack', text: '不能出现攻击词缀', desc: '重铸 / 混沌 / 精华等不会再出现攻击词缀' },
+    { id: 'no_caster', name: '不能出现施法词缀', cost: 36, affix: 'suffix', group: 'meta_no_caster', text: '不能出现施法词缀', desc: '重铸 / 混沌 / 精华等不会再出现施法词缀' },
   ];
 
   /* ------------------------------------------------------------------ *
