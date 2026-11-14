@@ -885,6 +885,7 @@
     transmute: 0.1, alteration: 0.2, augmentation: 0.5, regal: 1, alchemy: 0.5,
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
     divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160,
+    eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
     essence: 1, // 精华基础倍率，实际价格见 essence.cost
   };
@@ -1026,6 +1027,45 @@
     { id: 'veiled_move_speed', name: '移动速度', affix: 'suffix', group: 'move_speed', text: '移动速度提高 {0}%', v: [[25, 30]], slots: ['boots'] },
   ];
 
+  const eldritchImplicits = {
+    exarch: {
+      helmet: { id: 'exarch_cast_speed', name: '施法速度', text: '施法速度提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [8, 8] }, { tier: 2, name: 'Greater', v: [9, 9] },
+        { tier: 3, name: 'Grand', v: [10, 10] }, { tier: 4, name: 'Exceptional', v: [11, 11] },
+      ] },
+      body: { id: 'exarch_fire_damage', name: '火焰伤害', text: '火焰伤害提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [15, 17] }, { tier: 2, name: 'Greater', v: [18, 20] },
+        { tier: 3, name: 'Grand', v: [21, 23] }, { tier: 4, name: 'Exceptional', v: [24, 26] },
+      ] },
+      gloves: { id: 'exarch_attack_speed', name: '攻击速度', text: '攻击速度提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [8, 8] }, { tier: 2, name: 'Greater', v: [9, 9] },
+        { tier: 3, name: 'Grand', v: [10, 10] }, { tier: 4, name: 'Exceptional', v: [11, 11] },
+      ] },
+      boots: { id: 'exarch_move_speed', name: '移动速度', text: '移动速度提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [5, 5] }, { tier: 2, name: 'Greater', v: [6, 6] },
+        { tier: 3, name: 'Grand', v: [7, 7] }, { tier: 4, name: 'Exceptional', v: [8, 8] },
+      ] },
+    },
+    eater: {
+      helmet: { id: 'eater_es_recharge', name: '能量护盾回复', text: '能量护盾回复率提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [21, 21] }, { tier: 2, name: 'Greater', v: [22, 22] },
+        { tier: 3, name: 'Grand', v: [23, 23] }, { tier: 4, name: 'Exceptional', v: [24, 24] },
+      ] },
+      body: { id: 'eater_armour', name: '护甲', text: '护甲提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [17, 18] }, { tier: 2, name: 'Greater', v: [19, 20] },
+        { tier: 3, name: 'Grand', v: [21, 22] }, { tier: 4, name: 'Exceptional', v: [23, 24] },
+      ] },
+      gloves: { id: 'eater_spell_suppress', name: '法术压制', text: '+{0}% 法术压制率', tiers: [
+        { tier: 1, name: 'Lesser', v: [5, 5] }, { tier: 2, name: 'Greater', v: [6, 6] },
+        { tier: 3, name: 'Grand', v: [7, 7] }, { tier: 4, name: 'Exceptional', v: [8, 8] },
+      ] },
+      boots: { id: 'eater_life_regen', name: '生命回复', text: '生命回复率提高 {0}%', tiers: [
+        { tier: 1, name: 'Lesser', v: [7, 7] }, { tier: 2, name: 'Greater', v: [8, 8] },
+        { tier: 3, name: 'Grand', v: [9, 9] }, { tier: 4, name: 'Exceptional', v: [10, 10] },
+      ] },
+    },
+  };
+
   const data = {
     version: '1.0.1',
     configMode: 'static',
@@ -1043,7 +1083,7 @@
       { type: 'divine', name: '神圣石', short: '圣', color: '#e7d8b0', desc: '魔法 / 稀有：重掷数值', cost: 'divine' },
       { type: 'vaal', name: '瓦尔宝珠', short: '瓦', color: '#d28b8b', desc: '腐化：可能加腐化基底 / 变稀有 / 无变化', cost: 'vaal' },
     ],
-    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods,
+    bases, mods, essences, fossils, bench, metaCrafts, prices, presets, slots, influences, harvestTags, vaalImplicits, veiledMods, eldritchImplicits,
     ARMOUR, JEWEL, GEAR,
   };
 

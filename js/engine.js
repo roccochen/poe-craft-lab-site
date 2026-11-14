@@ -434,6 +434,7 @@
       case 'divine': return prices.divine;
       case 'vaal': return prices.vaal;
       case 'aisling': return prices.aisling || 160;
+      case 'eldritch': return prices['eldritch' + (['', 'Lesser', 'Greater', 'Grand', 'Exceptional'][action.tier] || 'Lesser')] || 1;
       case 'unveil': return 0;
       case 'awakener': return prices.awakener || 120;
       case 'essence': {
@@ -558,6 +559,7 @@
         return item.affixes.length ? null : '没有可重掷数值的词缀';
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
       case 'aisling': return item.rarity === 'rare' ? null : '爱斯琳只能用于稀有物品';
+      case 'eldritch': return item.corrupted ? '物品已经腐化' : null;
       case 'unveil': return item.affixes.some((a) => a.veiled) ? null : '没有待揭露的隐秘词缀';
       case 'awakener': return item.rarity === 'rare' ? null : '觉醒者之石只能用于稀有物品';
       case 'bench': return item.rarity === 'rare' ? null : '工艺台只能用于稀有物品';
@@ -571,6 +573,14 @@
       case 'harvest': return item.rarity === 'rare' ? null : '庄园重铸只能用于稀有物品';
       default: return '未知操作';
     }
+  }
+  function eldritchAvailability(item, kind, tier) {
+    if (item.corrupted) return '物品已腐化，不能使用 Eldritch 通货。';
+    if (['helmet', 'body', 'gloves', 'boots'].indexOf(getBase(item.baseId).slot) === -1) return 'Eldritch 只能用于头盔 / 胸甲 / 手套 / 鞋子。';
+    if (item.influences && item.influences.length) return '有势力的物品不能获得 Eldritch 基底。';
+    if (!D.eldritchImplicits[kind]) return '未知 Eldritch 类型。';
+    if (!tier || tier < 1 || tier > 4) return '未知 Eldritch 阶级。';
+    return null;
   }
   function veiledAffix(item) {
     return item.affixes.find((a) => a.veiled);
@@ -861,6 +871,23 @@
         message = '揭露隐秘词缀：获得「' + aff.text.split('\n')[0] + '」。';
         break;
       }
+      case 'eldritch': {
+        const reason = eldritchAvailability(next, action.kind, action.tier);
+        if (reason) return fail(reason);
+        const slot = getBase(next.baseId).slot;
+        const def = D.eldritchImplicits[action.kind] && D.eldritchImplicits[action.kind][slot];
+        if (!def) return fail('该部位没有对应的 Eldritch 词缀。');
+        const tierDef = def.tiers.find((t) => t.tier === action.tier);
+        if (!tierDef) return fail('未知阶级。');
+        const value = roundVal(randFloat(rng, tierDef.v[0], tierDef.v[1]));
+        next.eldritch = next.eldritch || {};
+        next.eldritch[action.kind] = {
+          id: def.id, name: def.name, text: formatText(def.text, [value]), value,
+          tier: tierDef.tier, tierName: tierDef.name,
+        };
+        message = 'Eldritch：获得' + (action.kind === 'exarch' ? '灼热' : '吞噬') + tierDef.name + '基底「' + next.eldritch[action.kind].text + '」。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -996,7 +1023,10 @@
       }).join(' / '));
     }
     if (item.corruptedImplicit) lines.push('--------', '腐化基底: ' + item.corruptedImplicit);
-    else if (base.implicit) lines.push('--------', base.implicit);
+    else if (item.eldritch && (item.eldritch.exarch || item.eldritch.eater)) {
+      if (item.eldritch.exarch) lines.push('灼热基底: ' + item.eldritch.exarch.text);
+      if (item.eldritch.eater) lines.push('吞噬基底: ' + item.eldritch.eater.text);
+    } else if (base.implicit) lines.push('--------', base.implicit);
     if (item.affixes.length) {
       lines.push('--------');
       item.affixes.forEach((a) => {
@@ -1122,7 +1152,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, fossilAvailability, harvestAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

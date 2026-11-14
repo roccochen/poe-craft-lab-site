@@ -746,6 +746,15 @@
           '<span class="mod-tag">' + esc(tagBits.join(' · ')) + '</span></li>';
       }).join('') + '</ul>'
       : '<div class="item-open item-start"><b>还没有词缀，先做第一步</b><p>看「现在推荐这样做」，点「执行这一步」；也可以从下方通货里选一个起手。</p><button class="btn tiny ghost" id="item-guide" type="button">看新手指南</button></div>';
+    const implicitLines = [];
+    if (item.corruptedImplicit) {
+      implicitLines.push('<div class="item-implicit corrupted-implicit">腐化基底：' + esc(item.corruptedImplicit) + '</div>');
+    } else {
+      if (item.eldritch && item.eldritch.exarch) implicitLines.push('<div class="item-implicit eldritch-exarch">灼热基底：' + esc(item.eldritch.exarch.text) + '</div>');
+      if (item.eldritch && item.eldritch.eater) implicitLines.push('<div class="item-implicit eldritch-eater">吞噬基底：' + esc(item.eldritch.eater.text) + '</div>');
+      if (!item.eldritch && base.implicit) implicitLines.push('<div class="item-implicit">' + esc(base.implicit) + '</div>');
+    }
+    const implicitHtml = implicitLines.length ? implicitLines.join('') + '<div class="item-sep"></div>' : '';
     const openBits = [];
     if (ev.openPrefix) openBits.push('空前缀 ' + ev.openPrefix);
     if (ev.openSuffix) openBits.push('空后缀 ' + ev.openSuffix);
@@ -754,7 +763,7 @@
       '<div class="item-header"><div class="item-name">' + esc(base.name) + '</div>' +
       '<div class="item-en">' + esc(base.en) + '</div></div>' +
       '<div class="item-sep"></div>' +
-      ((item.corruptedImplicit || base.implicit) ? '<div class="item-implicit' + (item.corruptedImplicit ? ' corrupted-implicit' : '') + '">' + esc(item.corruptedImplicit ? '腐化基底：' + item.corruptedImplicit : base.implicit) + '</div><div class="item-sep"></div>' : '') +
+      implicitHtml +
       (infNames ? '<div class="item-implicit" style="color:var(--purple)">影响：' + esc(infNames) + '</div><div class="item-sep"></div>' : '') +
       '<div class="item-body">' + modsHtml +
       (openBits.length ? '<div class="item-open">' + openBits.join(' · ') + '</div>' : '') +
@@ -881,6 +890,7 @@
     if (type === 'vaal') return '腐化';
     if (type === 'awakener') return '势力合成';
     if (type === 'aisling' || type === 'unveil') return '隐秘';
+    if (type === 'eldritch') return 'Eldritch';
     if (type === 'bench' || type === 'multimod') return '收尾';
     return '操作';
   }
@@ -918,7 +928,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'aisling', name: '爱斯琳' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -928,6 +938,7 @@
       bench: '收尾补一条固定工艺词缀',
       awakener: '双势力合成：保留目标与祭品各一条影响词缀',
       aisling: '添加 / 揭露隐秘词缀',
+      eldritch: '灼热 / 吞噬 Eldritch 基底',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -960,6 +971,7 @@
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
     else if (state.tab === 'aisling') renderAislingActions(body);
+    else if (state.tab === 'eldritch') renderEldritchActions(body);
     else if (state.tab === 'awakener') renderAwakenerActions(body);
     else renderBenchActions(body);
   }
@@ -1105,6 +1117,35 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderEldritchActions(body) {
+    const item = state.item;
+    const reason = E.eldritchAvailability(item, 'exarch', 1);
+    if (reason) {
+      body.innerHTML = '<div class="action-none">' + esc(reason) + '</div>';
+      return;
+    }
+    const prices = priceOverrides();
+    const tiers = [
+      { tier: 1, name: 'Lesser' }, { tier: 2, name: 'Greater' },
+      { tier: 3, name: 'Grand' }, { tier: 4, name: 'Exceptional' },
+    ];
+    const kinds = [
+      { id: 'exarch', name: '灼热（Searing Exarch）', short: '灼', color: '#d98c62', currency: 'Ember' },
+      { id: 'eater', name: '吞噬（Eater of Worlds）', short: '吞', color: '#6fba9a', currency: 'Ichor' },
+    ];
+    const current = item.eldritch || {};
+    const currentText = kinds.map((k) => current[k.id] ? k.name + '：' + current[k.id].tierName + ' · ' + current[k.id].text : '').filter(Boolean).join(' / ') || '还没有 Eldritch 基底。';
+    body.innerHTML = '<div class="awakener-note"><b>Eldritch 基底</b><p>灼热 / 吞噬基底可以同时存在，互相不覆盖；会替换普通基底。有势力的物品不能使用。当前：' + esc(currentText) + '</p></div>' +
+      kinds.map((k) => '<div class="eldritch-group"><div class="eldritch-title"><span class="orb" style="--orb:' + k.color + '">' + k.short + '</span><b>' + esc(k.name) + '</b></div>' +
+        '<div class="eldritch-grid">' + tiers.map((t) => {
+          const key = 'eldritch' + t.name;
+          return '<button class="eldritch-card" type="button" data-eldritch-kind="' + k.id + '" data-eldritch-tier="' + t.tier + '">' +
+            '<b>' + t.name + ' ' + k.currency + '</b><small>' + costText(prices[key] || 1) + '</small></button>';
+        }).join('') + '</div></div>').join('');
+    $$('#action-body [data-eldritch-kind]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: 'eldritch', kind: b.dataset.eldritchKind, tier: Number(b.dataset.eldritchTier) });
+    });
   }
   function renderAislingActions(body) {
     const prices = priceOverrides();

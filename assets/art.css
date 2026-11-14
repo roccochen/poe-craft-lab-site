@@ -525,3 +525,16 @@ body::before {
 
 .donor-actions { display: flex; align-items: center; gap: 9px; margin-top: 8px; flex-wrap: wrap; }
 .donor-hint { color: var(--muted-2); font-size: 9.5px; }
+
+.item-implicit.eldritch-exarch { color: #e3a27a; }
+.item-implicit.eldritch-eater { color: #8fd0b0; }
+.eldritch-group { margin-top: 10px; padding: 10px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 9px; background: rgba(255, 255, 255, .015); }
+.eldritch-title { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.eldritch-title .orb { width: 23px; height: 23px; font-size: 10px; }
+.eldritch-title b { color: #e9dfcc; font-family: var(--serif); font-size: 12.5px; letter-spacing: .05em; }
+.eldritch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.eldritch-card { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; text-align: left; border: 1px solid rgba(255, 255, 255, .075); border-radius: 6px; background: rgba(0, 0, 0, .12); }
+.eldritch-card:hover { border-color: rgba(212, 176, 106, .42); background: rgba(212, 176, 106, .05); }
+.eldritch-card b { color: #ddd6c7; font-size: 9.5px; font-weight: 500; }
+.eldritch-card small { color: var(--gold-dim); font-size: 9px; }
+@media (max-width: 700px) { .eldritch-grid { grid-template-columns: repeat(2, 1fr); } }
