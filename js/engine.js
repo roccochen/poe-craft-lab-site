@@ -1294,7 +1294,18 @@
         });
         const chosen = [];
         const counts = { prefix: 0, suffix: 0 };
-        const shuffled = pool.slice();
+        const fractured = next.affixes.concat(donor.affixes).filter((a, i, arr) => a.fractured && arr.findIndex((x) => x.group === a.group) === i);
+        const fracturedGroups = {};
+        fractured.forEach((a) => { fracturedGroups[a.group] = true; });
+        fractured.forEach((a) => {
+          if (chosen.length >= 6) return;
+          const side = a.affix === 'suffix' ? 'suffix' : 'prefix';
+          if (counts[side] >= 3) return;
+          chosen.push(a);
+          counts[side]++;
+          seen[a.group] = true;
+        });
+        const shuffled = pool.filter((a) => !fracturedGroups[a.group]);
         for (let i = shuffled.length - 1; i > 0; i--) { const j = randInt(rng, 0, i); const t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t; }
         shuffled.forEach((a) => {
           if (chosen.length >= 6) return;
