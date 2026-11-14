@@ -557,3 +557,15 @@ body::before {
 .fracture-row small { color: var(--gold-dim); font-size: 9px; text-align: right; }
 
 .essence-tiers { margin-bottom: 8px; }
+
+.socket-preview, .item-sockets { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.socket-preview { margin-bottom: 10px; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 8px; background: rgba(0, 0, 0, .14); }
+.socket { width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18); font-size: 11px; color: #101010; line-height: 1; }
+.socket-r { background: #c76a62; border-color: #e09188; }
+.socket-g { background: #7db06a; border-color: #9dd08a; }
+.socket-b { background: #6a8fc7; border-color: #8fb0e0; }
+.socket-w { background: #ece9e0; border-color: #fff; }
+.socket-link { width: 13px; height: 2px; background: rgba(255, 255, 255, .1); }
+.socket-link.on { background: var(--gold); box-shadow: 0 0 5px rgba(212, 176, 106, .5); }
+.socket-empty { color: var(--muted-2); font-size: 10px; }
+.item-sockets { margin: 5px 0 6px; }

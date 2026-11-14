@@ -22,7 +22,10 @@
     "multimod": 36,
     "essenceMult": 1,
     "fossilMult": 1,
-    "essence": 1
+    "essence": 1,
+    "jeweller": 0.5,
+    "fusing": 0.5,
+    "chromatic": 0.2
   },
   "essences": {
     "greed": 4,

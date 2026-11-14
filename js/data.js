@@ -886,6 +886,7 @@
     chaos: 1, exalted: 18, annulment: 8, scour: 0.5, vaal: 1,
     taintedChaos: 4, taintedExalted: 25, taintedDivine: 40, taintedAnnul: 8,
     divine: 200, resonator: 1, harvest: 15, awakener: 120, aisling: 160, influenceExalt: 90, scrap: 0.1, whetstone: 0.1,
+    jeweller: 0.5, fusing: 0.5, chromatic: 0.2,
     veiledChaos: 6,
     eldritchLesser: 1, eldritchGreater: 4, eldritchGrand: 15, eldritchExceptional: 50, orbConflict: 80,
     lock: 36, multimod: 36, essenceMult: 1, fossilMult: 1,
@@ -1392,6 +1393,11 @@
       { type: 'tainted_exalted', name: '腐化崇高石', short: '腐崇', color: '#d19a8a', desc: '给腐化稀有物品增加一条词缀' },
       { type: 'tainted_divine', name: '腐化神圣石', short: '腐圣', color: '#d8c9a8', desc: '重掷腐化物品的词缀数值' },
       { type: 'tainted_annul', name: '腐化剥离石', short: '腐剥', color: '#9a8f8a', desc: '随机移除腐化物品的一条非破裂词缀' },
+    ],
+    socketActions: [
+      { type: 'jeweller', name: '珠宝匠的宝珠', short: '珠', color: '#9ab8d8', desc: '给装备增加 1 个插槽' },
+      { type: 'fusing', name: '链结石', short: '链', color: '#c9a76a', desc: '重掷插槽连接' },
+      { type: 'chromatic', name: '幻色石', short: '色', color: '#b08ad8', desc: '重掷所有非白孔颜色' },
     ],
     basicActions: [
       { type: 'transmute', name: '蜕变石', short: '蜕', color: '#8fa3c8', desc: '普通 → 1 词缀魔法', cost: 'transmute' },

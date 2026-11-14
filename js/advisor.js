@@ -115,6 +115,9 @@
       case 'tainted_annul': return '腐化剥离石';
       case 'bench_remove': return '移除工艺词缀';
       case 'veiled_chaos': return '隐秘混沌石';
+      case 'jeweller': return '珠宝匠的宝珠';
+      case 'fusing': return '链结石';
+      case 'chromatic': return '幻色石';
       case 'unveil': return '揭露隐秘词缀';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];
@@ -169,6 +172,9 @@
       case 'tainted_annul': return '随机移除腐化物品的一条非破裂词缀。';
       case 'bench_remove': return '移除物品上所有工艺 / meta 词缀。';
       case 'veiled_chaos': return '重铸稀有物品，并保证 1 条待揭露隐秘词缀。';
+      case 'jeweller': return '增加 1 个插槽。';
+      case 'fusing': return '重掷插槽连接。';
+      case 'chromatic': return '重掷所有非白孔颜色。';
       case 'unveil': return '从 3 个隐秘选项中选择 1 条，替换待揭露词缀。';
       case 'essence': {
         const e = ESSENCE_BY_ID[action.essenceId];

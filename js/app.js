@@ -734,6 +734,7 @@
     $('#rarity-label').className = 'rarity-label ' + item.rarity;
     $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '') + (item.corrupted ? ' · 已腐化' : '') + ((item.quality || 0) ? ' · 品质 +' + item.quality + '%' : '');
     const infNames = item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ');
+    const socketBar = (item.sockets && item.sockets.length) ? '<div class="item-sockets">' + socketHtml(item) + '</div>' : '';
     const modsHtml = item.affixes.length
       ? '<ul class="item-mod-list">' + item.affixes.map((a) => {
         const tagBits = [];
@@ -765,7 +766,7 @@
       '<div class="item-header"><div class="item-name">' + esc(base.name) + '</div>' +
       '<div class="item-en">' + esc(base.en) + '</div></div>' +
       '<div class="item-sep"></div>' +
-      implicitHtml +
+      implicitHtml + socketBar +
       (infNames ? '<div class="item-implicit" style="color:var(--purple)">影响：' + esc(infNames) + '</div><div class="item-sep"></div>' : '') +
       '<div class="item-body">' + modsHtml +
       (openBits.length ? '<div class="item-open">' + openBits.join(' · ') + '</div>' : '') +
@@ -971,6 +972,7 @@
     if (type === 'aisling' || type === 'unveil' || type === 'veiled_chaos') return '隐秘';
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
+    if (type === 'jeweller' || type === 'fusing' || type === 'chromatic') return '插槽';
     if (type.indexOf('tainted_') === 0) return 'Tainted';
     if (type === 'bench' || type === 'multimod' || type === 'bench_remove') return '收尾';
     return '操作';
@@ -1009,7 +1011,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'sockets', name: '插槽' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -1022,6 +1024,7 @@
       eldritch: '灼热 / 吞噬 Eldritch 基底',
       influence: '给稀有物品添加势力影响与势力词缀',
       tainted: '腐化后才能使用的 Tainted 通货',
+      sockets: '插槽数量 / 连接 / 颜色',
       omen: '改变下一条通货结果的预兆',
     };
     if (!tabs.some((t) => t.id === state.tab)) state.tab = tabs[0].id;
@@ -1053,6 +1056,7 @@
     else if (state.tab === 'harvest') renderHarvestActions(body);
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
+    else if (state.tab === 'sockets') renderSocketActions(body);
     else if (state.tab === 'influence') renderInfluenceActions(body);
     else if (state.tab === 'tainted') renderTaintedActions(body);
     else if (state.tab === 'aisling') renderAislingActions(body);
@@ -1225,6 +1229,28 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function socketHtml(item) {
+    if (!item.sockets || !item.sockets.length) return '<span class="socket-empty">无插槽</span>';
+    return item.sockets.map((c, i) => '<span class="socket socket-' + c.toLowerCase() + '">' + (c === 'W' ? '○' : '●') + '</span>' + (i < item.sockets.length - 1 ? '<span class="socket-link ' + (item.links && item.links[i] ? 'on' : '') + '"></span>' : '')).join('');
+  }
+  function renderSocketActions(body) {
+    const item = state.item;
+    const max = E.maxSockets(item);
+    const prices = priceOverrides();
+    body.innerHTML = '<div class="socket-preview">' + socketHtml(item) + '</div>' +
+      '<div class="form-hint" style="margin-bottom:8px">该部位最多 ' + max + ' 孔；白孔不会被幻色石重掷。腐化后不能再改插槽。</div>' +
+      '<div class="action-grid">' + D.socketActions.map((a) => {
+        const reason = E.socketAvailability(item, a.type);
+        const cost = E.actionCost({ type: a.type }, prices);
+        return '<button class="action-btn ' + (reason ? 'unavailable' : '') + '" type="button" data-socket="' + a.type + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' +
+          '<span class="orb" style="--orb:' + a.color + '">' + a.short + '</span>' +
+          '<span class="action-info"><span class="action-name">' + esc(a.name) + '</span><span class="action-desc">' + esc(reason || a.desc) + '</span></span>' +
+          '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
+      }).join('') + '</div>';
+    $$('#action-body [data-socket]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: b.dataset.socket });
+    });
   }
   function renderTaintedActions(body) {
     const item = state.item;
@@ -2243,7 +2269,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length

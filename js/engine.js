@@ -93,6 +93,8 @@
       quality: opts.quality || 0,
       corrupted: !!opts.corrupted,
       meta: { multimod: false },
+      sockets: [],
+      links: [],
     };
   }
   function baseDefenceTags(base) {
@@ -469,6 +471,9 @@
       case 'influence_exalt': return prices.influenceExalt || 90;
       case 'bench_remove': return prices.scour;
       case 'veiled_chaos': return prices.veiledChaos || 6;
+      case 'jeweller': return prices.jeweller;
+      case 'fusing': return prices.fusing;
+      case 'chromatic': return prices.chromatic;
       case 'tainted_chaos': return prices.taintedChaos;
       case 'tainted_exalted': return prices.taintedExalted;
       case 'tainted_divine': return prices.taintedDivine;
@@ -607,6 +612,9 @@
       case 'influence_exalt': return influenceAvailability(item, action.influence);
       case 'bench_remove': return benchRemoveAvailability(item);
       case 'veiled_chaos': return veiledChaosAvailability(item);
+      case 'jeweller':
+      case 'fusing':
+      case 'chromatic': return socketAvailability(item, type);
       case 'tainted_chaos':
       case 'tainted_exalted':
       case 'tainted_divine':
@@ -717,6 +725,29 @@
   function benchRemoveAvailability(item) {
     if (item.corrupted) return '物品已腐化，不能使用工艺台。';
     if (!item.affixes.some((a) => a.crafted)) return '没有可移除的工艺词缀。';
+    return null;
+  }
+  function maxSockets(item) {
+    const base = getBase(item.baseId);
+    if (base.slot === 'body') return 6;
+    if (base.slot === 'weapon') {
+      const t = (base.weapon && base.weapon.type) || '';
+      return ['bow', 'staff', 'two_hand', '2h'].includes(t) ? 6 : 3;
+    }
+    if (['helmet', 'gloves', 'boots', 'shield'].includes(base.slot)) return 4;
+    return 0;
+  }
+  function socketColor(rng) {
+    const r = rand(rng);
+    return r < 0.34 ? 'R' : r < 0.67 ? 'G' : 'B';
+  }
+  function socketAvailability(item, type) {
+    if (item.corrupted) return '物品已腐化，不能使用插槽通货。';
+    const max = maxSockets(item);
+    if (!max) return '该部位没有插槽。';
+    if (type === 'jeweller' && item.sockets.length >= max) return '插槽已满。';
+    if (type === 'fusing' && item.sockets.length < 2) return '至少需要 2 个插槽。';
+    if (type === 'chromatic' && !item.sockets.length) return '没有插槽。';
     return null;
   }
   function qualityAvailability(item, type) {
@@ -919,7 +950,13 @@
           next.corruptedImplicit = pool[randInt(rng, 0, pool.length - 1)];
           message = '瓦尔宝珠：获得腐化基底「' + next.corruptedImplicit + '」。';
         } else if (roll < 0.5) {
-          message = '瓦尔宝珠：白孔结果（本模拟器未建模插槽，物品只获得腐化状态）。';
+          if (next.sockets && next.sockets.length) {
+            const idx = randInt(rng, 0, next.sockets.length - 1);
+            next.sockets[idx] = 'W';
+            message = '瓦尔宝珠：一个插槽变成白孔。';
+          } else {
+            message = '瓦尔宝珠：白孔结果（该物品没有插槽，只获得腐化状态）。';
+          }
         } else if (roll < 0.75) {
           const locks = lockedSides(next);
           const preserve = [];
@@ -1176,6 +1213,30 @@
         message = '隐秘混沌石：重铸稀有物品，并留下 1 条待揭露隐秘词缀。';
         break;
       }
+      case 'jeweller': {
+        const reason = socketAvailability(next, 'jeweller');
+        if (reason) return fail(reason);
+        next.sockets.push(socketColor(rng));
+        next.links = next.links || [];
+        message = '珠宝匠的宝珠：增加 1 个插槽（' + next.sockets.length + ' 孔）。';
+        break;
+      }
+      case 'chromatic': {
+        const reason = socketAvailability(next, 'chromatic');
+        if (reason) return fail(reason);
+        next.sockets = next.sockets.map((c) => (c === 'W' ? 'W' : socketColor(rng)));
+        message = '幻色石：重掷了插槽颜色。';
+        break;
+      }
+      case 'fusing': {
+        const reason = socketAvailability(next, 'fusing');
+        if (reason) return fail(reason);
+        next.links = [];
+        for (let i = 0; i < next.sockets.length - 1; i++) next.links.push(rand(rng) < 0.28);
+        const linked = next.links.filter(Boolean).length;
+        message = '链结石：重掷了插槽连接（' + linked + ' 条连接）。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1305,6 +1366,7 @@
     lines.push('--------');
     lines.push('物品等级: ' + item.ilvl);
     if (item.quality) lines.push('品质: +' + item.quality + '%');
+    if (item.sockets && item.sockets.length) lines.push('插槽: ' + item.sockets.join('-'));
     if (item.influences.length) {
       lines.push('影响: ' + item.influences.map((id) => {
         const inf = D.influences.find((x) => x.id === id);
@@ -1441,7 +1503,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
