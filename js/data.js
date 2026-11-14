@@ -898,6 +898,98 @@
   /* 当前内置的是震耳（Deafening, tier 7）精华：普通/稀有可用，物品等级至少 65。 */
   essences.forEach((e) => { e.tier = 7; e.minIlvl = 65; e.canReforgeRare = true; });
 
+  /* 先补齐 4 种常用精华的第 5 / 6 阶；其余类型仍只有震耳。 */
+  [
+    {
+      id: 'greed_5', name: '贪婪', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#d8c27a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'life', text: '+{0} 最大生命', tags: ['life'], v: [[61, 75]] },
+        weapon: { affix: 'suffix', group: 'life_leech', text: '物理攻击伤害的 {0}% 转化为生命偷取', tags: ['life', 'attack'], v: [[3.3, 3.6]] },
+        jewellery: { affix: 'suffix', group: 'life_regen', text: '每秒回复 {0} 点生命', tags: ['life'], v: [[24.1, 32]] },
+      },
+      bySlot: { belt: { affix: 'suffix', group: 'flask_life', text: '药剂生命回复速度提高 {0}%', tags: ['flask', 'life'], v: [[24, 27]] } },
+    },
+    {
+      id: 'greed_6', name: '贪婪', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#d8c27a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'life', text: '+{0} 最大生命', tags: ['life'], v: [[76, 90]] },
+        weapon: { affix: 'suffix', group: 'life_leech', text: '物理攻击伤害的 {0}% 转化为生命偷取', tags: ['life', 'attack'], v: [[3.7, 4.0]] },
+        jewellery: { affix: 'suffix', group: 'life_regen', text: '每秒回复 {0} 点生命', tags: ['life'], v: [[32.1, 48]] },
+      },
+      bySlot: { belt: { affix: 'suffix', group: 'flask_life', text: '药剂生命回复速度提高 {0}%', tags: ['flask', 'life'], v: [[28, 31]] } },
+    },
+    {
+      id: 'woe_5', name: '哀伤', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#9db8e8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v: [[50, 61]] },
+        weapon: { affix: 'prefix', group: 'spell_damage', text: '法术伤害提高 {0}%', tags: ['caster', 'damage'], v: [[50, 66]] },
+        jewellery: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v: [[14, 16]] },
+      },
+      bySlot: { quiver: { affix: 'prefix', group: 'bow_damage', text: '弓技能伤害提高 {0}%', tags: ['attack', 'damage'], v: [[31, 36]] } },
+    },
+    {
+      id: 'woe_6', name: '哀伤', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#9db8e8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v: [[62, 75]] },
+        weapon: { affix: 'prefix', group: 'spell_damage', text: '法术伤害提高 {0}%', tags: ['caster', 'damage'], v: [[67, 87]] },
+        jewellery: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v: [[17, 20]] },
+      },
+      bySlot: { quiver: { affix: 'prefix', group: 'bow_damage', text: '弓技能伤害提高 {0}%', tags: ['attack', 'damage'], v: [[37, 44]] } },
+    },
+    {
+      id: 'zeal_5', name: '狂热', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 3, color: '#e8b46a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_recovery', text: '眩晕与格挡回复提高 {0}%', tags: ['defence'], v: [[23, 25]] },
+        weapon: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v: [[23, 25]] },
+        jewellery: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v: [[9, 12]] },
+      },
+      bySlot: {
+        gloves: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v: [[11, 13]] },
+        boots: { affix: 'suffix', group: 'move_speed', text: '移动速度提高 {0}%', tags: ['speed'], v: [[25, 25]] },
+        belt: { affix: 'suffix', group: 'trap_speed', text: '陷阱与地雷投掷速度提高 {0}%', tags: ['speed'], v: [[11, 13]] },
+      },
+    },
+    {
+      id: 'zeal_6', name: '狂热', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 4, color: '#e8b46a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_recovery', text: '眩晕与格挡回复提高 {0}%', tags: ['defence'], v: [[26, 28]] },
+        weapon: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v: [[26, 28]] },
+        jewellery: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v: [[13, 15]] },
+      },
+      bySlot: {
+        gloves: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v: [[14, 16]] },
+        boots: { affix: 'suffix', group: 'move_speed', text: '移动速度提高 {0}%', tags: ['speed'], v: [[30, 30]] },
+        belt: { affix: 'suffix', group: 'trap_speed', text: '陷阱与地雷投掷速度提高 {0}%', tags: ['speed'], v: [[14, 16]] },
+      },
+    },
+    {
+      id: 'loathing_5', name: '厌恶', tierName: '尖啸', tier: 5, minIlvl: 46, cost: 5, color: '#c9a7e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'ailment_avoid', text: '{0}% 几率避免元素异常状态', tags: ['defence'], v: [[23, 25]] },
+        weapon: { affix: 'suffix', group: 'crit_chance_weapon', text: '暴击率提高 {0}%', tags: ['critical'], v: [[25, 29]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v: [[21, 25]] },
+      },
+      bySlot: {
+        helmet: { affix: 'suffix', group: 'reservation_efficiency', text: '魔力保留效率提高 {0}%', tags: ['mana', 'aura'], v: [[7, 10]] },
+        gloves: { affix: 'suffix', group: 'crit_chance_global', text: '全局暴击率提高 {0}%', tags: ['critical'], v: [[18, 20]] },
+        shield: { affix: 'suffix', group: 'block', text: '+{0}% 格挡率', tags: ['defence'], v: [[58, 63]] },
+      },
+    },
+    {
+      id: 'loathing_6', name: '厌恶', tierName: '刺耳', tier: 6, minIlvl: 59, cost: 6, color: '#c9a7e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'ailment_avoid', text: '{0}% 几率避免元素异常状态', tags: ['defence'], v: [[26, 28]] },
+        weapon: { affix: 'suffix', group: 'crit_chance_weapon', text: '暴击率提高 {0}%', tags: ['critical'], v: [[30, 34]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v: [[26, 30]] },
+      },
+      bySlot: {
+        helmet: { affix: 'suffix', group: 'reservation_efficiency', text: '魔力保留效率提高 {0}%', tags: ['mana', 'aura'], v: [[11, 14]] },
+        gloves: { affix: 'suffix', group: 'crit_chance_global', text: '全局暴击率提高 {0}%', tags: ['critical'], v: [[21, 23]] },
+        shield: { affix: 'suffix', group: 'block', text: '+{0}% 格挡率', tags: ['defence'], v: [[64, 70]] },
+      },
+    },
+  ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
+
   const presets = [
     {
       id: 'life_helmet', name: '血量双抗头盔', desc: '入门目标：T3 生命 + T4 双抗。T4 抗性可以用工艺补最后一条，适合先跑通流程。',
@@ -1088,7 +1180,7 @@
   const data = {
     version: '1.0.1',
     configMode: 'static',
-    essenceHint: '精华只能用于普通或稀有物品，且物品等级至少 65；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
+    essenceHint: '精华只能用于普通或稀有物品，且物品等级要达到该档位要求（当前尖啸 46 / 刺耳 59 / 震耳 65）；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
     taintedActions: [
       { type: 'tainted_chaos', name: '腐化混沌石', short: '腐混', color: '#b06a7a', desc: '重铸腐化稀有物品的随机词缀' },
       { type: 'tainted_exalted', name: '腐化崇高石', short: '腐崇', color: '#d19a8a', desc: '给腐化稀有物品增加一条词缀' },

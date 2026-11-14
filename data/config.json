@@ -40,7 +40,15 @@
     "sorrow": 4,
     "rage": 4,
     "spite": 4,
-    "scorn": 5
+    "scorn": 5,
+    "greed_5": 3,
+    "greed_6": 4,
+    "woe_5": 3,
+    "woe_6": 4,
+    "zeal_5": 3,
+    "zeal_6": 4,
+    "loathing_5": 5,
+    "loathing_6": 6
   },
   "fossils": {
     "pristine": 6,
