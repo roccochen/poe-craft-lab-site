@@ -1895,6 +1895,13 @@
     $$('[data-collapse]').forEach((btn) => {
       btn.onclick = () => toggleCollapse(btn.dataset.collapse);
     });
+    $$('[data-preset-scroll]').forEach((btn) => {
+      btn.onclick = () => {
+        const list = $('#preset-list');
+        if (!list) return;
+        list.scrollBy({ left: Number(btn.dataset.presetScroll) * Math.max(180, list.clientWidth * 0.72), behavior: 'smooth' });
+      };
+    });
     applyCollapsedState();
     const guideBtn = $('#journey-guide');
     if (guideBtn) guideBtn.onclick = openGuide;

@@ -246,6 +246,10 @@ button, a, input, select, [tabindex] { -webkit-tap-highlight-color: transparent;
 .preset-strip { display: flex; gap: 8px; overflow-x: auto; padding: 1px 1px 7px; scroll-snap-type: x proximity; }
 .preset-strip .preset { flex: 0 0 calc(50% - 4px); scroll-snap-align: start; }
 .preset-strip::-webkit-scrollbar { height: 6px; }
+.preset-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; color: var(--muted-2); font-size: 10px; }
+.preset-foot > div { display: flex; gap: 4px; }
+.preset-arrow { width: 30px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: rgba(255, 255, 255, .02); color: var(--muted); font-size: 16px; line-height: 1; }
+.preset-arrow:hover { color: var(--text); border-color: var(--line-2); background: rgba(255, 255, 255, .05); }
 .block-head { gap: 8px; }
 .block-head h2 { flex: 1; min-width: 0; flex-wrap: wrap; }
 .collapse-toggle {
