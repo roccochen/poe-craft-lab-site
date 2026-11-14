@@ -27,7 +27,8 @@
     "fusing": 0.5,
     "chromatic": 0.2,
     "recombine": 100,
-    "veiledExalt": 30
+    "veiledExalt": 30,
+    "catalyst": 4
   },
   "essences": {
     "greed": 4,

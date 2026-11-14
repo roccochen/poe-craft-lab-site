@@ -990,6 +990,7 @@
     if (type === 'influence_exalt') return '势力';
     if (type === 'jeweller' || type === 'fusing' || type === 'chromatic') return '插槽';
     if (type === 'recombine') return '重组';
+    if (type === 'catalyst') return '品质';
     if (type.indexOf('tainted_') === 0) return 'Tainted';
     if (type === 'bench' || type === 'multimod' || type === 'bench_remove') return '收尾';
     return '操作';
@@ -1028,7 +1029,7 @@
   function renderActionTabs() {
     const tabs = D.actionTabs || [
       { id: 'basic', name: '通货' }, { id: 'essence', name: '精华' }, { id: 'fossil', name: '化石' },
-      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'sockets', name: '插槽' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' }, { id: 'recombine', name: '重组器' },
+      { id: 'harvest', name: '庄园重铸' }, { id: 'bench', name: '工艺台收尾' }, { id: 'sockets', name: '插槽' }, { id: 'catalyst', name: '催化剂' }, { id: 'influence', name: '势力崇高' }, { id: 'tainted', name: 'Tainted' }, { id: 'aisling', name: '爱斯琳' }, { id: 'eldritch', name: 'Eldritch' }, { id: 'awakener', name: '势力合成' }, { id: 'recombine', name: '重组器' },
     ];
     const tabHelp = {
       basic: '起手、补词缀、重洗和调数值用的通货',
@@ -1042,6 +1043,7 @@
       influence: '给稀有物品添加势力影响与势力词缀',
       tainted: '腐化后才能使用的 Tainted 通货',
       sockets: '插槽数量 / 连接 / 颜色',
+      catalyst: '给戒指 / 项链 / 腰带加品质',
       recombine: '从两件稀有装备随机重组词缀',
       omen: '改变下一条通货结果的预兆',
     };
@@ -1075,6 +1077,7 @@
     else if (state.tab === 'omen') renderOmenActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
     else if (state.tab === 'sockets') renderSocketActions(body);
+    else if (state.tab === 'catalyst') renderCatalystActions(body);
     else if (state.tab === 'influence') renderInfluenceActions(body);
     else if (state.tab === 'tainted') renderTaintedActions(body);
     else if (state.tab === 'aisling') renderAislingActions(body);
@@ -1248,6 +1251,27 @@
   }
   function benchPreview(b) {
     return E.formatText(b.text, b.v.map((r) => (r[0] + r[1]) / 2));
+  }
+  function renderCatalystActions(body) {
+    const item = state.item;
+    const prices = priceOverrides();
+    const slot = E.getBase(item.baseId).slot;
+    if (['ring', 'amulet', 'belt'].indexOf(slot) === -1) {
+      body.innerHTML = '<div class="action-none">催化剂只能用于戒指 / 项链 / 腰带。</div>';
+      return;
+    }
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">催化剂品质会强化对应标签的词缀；换一种催化剂会清空当前品质并重新开始。最高 20%。</div>' +
+      '<div class="action-grid">' + D.catalysts.map((c) => {
+        const reason = E.catalystAvailability(item, c.id);
+        const cost = E.actionCost({ type: 'catalyst', catalystId: c.id }, prices);
+        return '<button class="action-btn ' + (reason ? 'unavailable' : '') + '" type="button" data-catalyst="' + c.id + '" ' + (reason ? 'disabled title="' + esc(reason) + '"' : '') + '>' +
+          '<span class="orb" style="--orb:' + c.color + '">催</span>' +
+          '<span class="action-info"><span class="action-name">' + esc(c.name) + '</span><span class="action-desc">' + esc(reason || c.desc) + '</span></span>' +
+          '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
+      }).join('') + '</div>';
+    $('#action-body [data-catalyst]').forEach((b) => {
+      b.onclick = () => chooseTool({ type: 'catalyst', catalystId: b.dataset.catalyst });
+    });
   }
   function socketHtml(item) {
     if (!item.sockets || !item.sockets.length) return '<span class="socket-empty">无插槽</span>';
@@ -2325,7 +2349,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['veiledExalt', '隐秘崇高石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['recombine', '重组器'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['veiledExalt', '隐秘崇高石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['recombine', '重组器'], ['catalyst', '催化剂'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length

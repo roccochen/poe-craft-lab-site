@@ -476,6 +476,7 @@
       case 'veiled_chaos': return prices.veiledChaos || 6;
       case 'veiled_exalt': return prices.veiledExalt || 30;
       case 'recombine': return prices.recombine || 100;
+      case 'catalyst': return prices.catalyst || 4;
       case 'jeweller': return prices.jeweller;
       case 'fusing': return prices.fusing;
       case 'chromatic': return prices.chromatic;
@@ -619,6 +620,7 @@
       case 'veiled_chaos': return veiledChaosAvailability(item);
       case 'veiled_exalt': return veiledExaltAvailability(item);
       case 'recombine': return recombineAvailability(item, action.donor);
+      case 'catalyst': return catalystAvailability(item, action.catalystId);
       case 'jeweller':
       case 'fusing':
       case 'chromatic': return socketAvailability(item, type);
@@ -771,6 +773,16 @@
   function socketColor(rng) {
     const r = rand(rng);
     return r < 0.34 ? 'R' : r < 0.67 ? 'G' : 'B';
+  }
+  function catalystById(id) { return (D.catalysts || []).find((c) => c.id === id) || null; }
+  function catalystAvailability(item, catalystId) {
+    const cat = catalystById(catalystId);
+    if (!cat) return '未知催化剂。';
+    if (item.corrupted) return '物品已腐化，不能使用催化剂。';
+    const slot = getBase(item.baseId).slot;
+    if (['ring', 'amulet', 'belt'].indexOf(slot) === -1) return '催化剂只能用于戒指 / 项链 / 腰带。';
+    if ((item.quality || 0) >= 20) return '品质已达上限 20%。';
+    return null;
   }
   function socketAvailability(item, type) {
     if (item.corrupted) return '物品已腐化，不能使用插槽通货。';
@@ -1314,6 +1326,16 @@
         message = '隐秘崇高石：移除一条词缀，并留下 1 条待揭露隐秘词缀。';
         break;
       }
+      case 'catalyst': {
+        const reason = catalystAvailability(next, action.catalystId);
+        if (reason) return fail(reason);
+        if (next.catalyst && next.catalyst !== action.catalystId) next.quality = 0;
+        next.catalyst = action.catalystId;
+        const gain = randInt(rng, 1, 5);
+        next.quality = Math.min(20, (next.quality || 0) + gain);
+        message = '催化剂：品质提升到 ' + next.quality + '%。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1471,8 +1493,11 @@
     let life = 0, esFlat = 0, esPct = 0, arFlat = 0, arPct = 0, evFlat = 0, evPct = 0;
     let physFlat = 0, physPct = 0, atkSpeed = 0, critChance = 0, critMulti = 0;
     let fireFlat = 0, coldFlat = 0, lightFlat = 0;
+    const catalyst = catalystById(item.catalyst);
+    const qualityMult = catalyst ? 1 + (item.quality || 0) / 100 : 1;
     item.affixes.forEach((a) => {
-      const v = a.values || [];
+      const matches = catalyst && (a.tags || []).some((t) => catalyst.tags.indexOf(t) !== -1);
+      const v = (a.values || []).map((x) => (matches ? x * qualityMult : x));
       switch (a.group) {
         case 'life': life += v[0] || 0; break;
         case 'life_hybrid_es': life += v[0] || 0; esFlat += v[1] || 0; break;
