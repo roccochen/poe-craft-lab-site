@@ -75,7 +75,11 @@
     "envy_5": 4,
     "envy_6": 5,
     "misery_5": 3,
-    "misery_6": 4
+    "misery_6": 4,
+    "greed_4": 2,
+    "woe_4": 2,
+    "zeal_4": 2,
+    "loathing_4": 3
   },
   "fossils": {
     "pristine": 6,
