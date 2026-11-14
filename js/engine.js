@@ -474,6 +474,7 @@
       case 'influence_exalt': return prices.influenceExalt || 90;
       case 'bench_remove': return prices.scour;
       case 'veiled_chaos': return prices.veiledChaos || 6;
+      case 'veiled_exalt': return prices.veiledExalt || 30;
       case 'recombine': return prices.recombine || 100;
       case 'jeweller': return prices.jeweller;
       case 'fusing': return prices.fusing;
@@ -616,6 +617,7 @@
       case 'influence_exalt': return influenceAvailability(item, action.influence);
       case 'bench_remove': return benchRemoveAvailability(item);
       case 'veiled_chaos': return veiledChaosAvailability(item);
+      case 'veiled_exalt': return veiledExaltAvailability(item);
       case 'recombine': return recombineAvailability(item, action.donor);
       case 'jeweller':
       case 'fusing':
@@ -729,6 +731,13 @@
     temp.influences = (item.influences || []).concat([influenceId]);
     const sides = ['prefix', 'suffix'].filter((side) => canAdd(temp, side) && candidatesFor(temp, side, { influence: influenceId }).length);
     return sides.length ? null : '没有空位或该势力没有可用词缀。';
+  }
+  function veiledExaltAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能使用隐秘崇高石。';
+    if (item.rarity !== 'rare') return '隐秘崇高石只能用于稀有物品。';
+    if (item.affixes.some((a) => a.veiled)) return '已经有待揭露的隐秘词缀。';
+    if (!item.affixes.some((a) => !a.fractured && !a.crafted)) return '没有可移除的普通词缀。';
+    return null;
   }
   function veiledChaosAvailability(item) {
     if (item.corrupted) return '物品已腐化，不能使用隐秘混沌石。';
@@ -1282,6 +1291,19 @@
         message = '重组器：从双方词缀池随机组合出 ' + next.affixes.length + ' 条词缀。';
         break;
       }
+      case 'veiled_exalt': {
+        const reason = veiledExaltAvailability(next);
+        if (reason) return fail(reason);
+        const removable = next.affixes.filter((a) => !a.fractured && !a.crafted);
+        const victim = removable[randInt(rng, 0, removable.length - 1)];
+        const side = victim.affix;
+        next.affixes = next.affixes.filter((a) => a !== victim);
+        if (!canAdd(next, side)) return fail('移除后没有空位添加隐秘词缀。');
+        addVeiledAffix(next, side);
+        next.veiledOptions = veiledChoices(next, rng).map((m) => m.id);
+        message = '隐秘崇高石：移除一条词缀，并留下 1 条待揭露隐秘词缀。';
+        break;
+      }
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
@@ -1548,7 +1570,7 @@
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, makeFracturedItem, fractureCandidates, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
     eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, actionAvailability, mergePrices,
-    essenceAvailability, qualityAvailability, recombineAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
+    essenceAvailability, qualityAvailability, veiledExaltAvailability, recombineAvailability, socketAvailability, maxSockets, benchRemoveAvailability, veiledChaosAvailability, taintedAvailability, influenceAvailability, orbConflictAvailability, fossilAvailability, harvestAvailability, harvestModeAvailability, awakenerAvailability, awakenerDonorMods, aislingAvailability, unveilAvailability, veiledChoices, veilById, eldritchAvailability, metaAvailability, lockedSides, metaById, syncMetaFlags,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,

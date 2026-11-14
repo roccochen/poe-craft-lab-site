@@ -978,7 +978,7 @@
     if (type === 'vaal') return '腐化';
     if (type === 'scrap' || type === 'whetstone') return '品质';
     if (type === 'awakener') return '势力合成';
-    if (type === 'aisling' || type === 'unveil' || type === 'veiled_chaos') return '隐秘';
+    if (type === 'aisling' || type === 'unveil' || type === 'veiled_chaos' || type === 'veiled_exalt') return '隐秘';
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
     if (type === 'jeweller' || type === 'fusing' || type === 'chromatic') return '插槽';
@@ -1360,9 +1360,12 @@
       return;
     }
     body.innerHTML = '<div class="awakener-note"><b>爱斯琳 · 隐秘词缀</b><p>给稀有物品添加一条隐秘词缀，占 1 条前缀或后缀；之后从 3 个选项中揭露 1 条。</p></div>' +
-      '<div class="aisling-action"><button class="btn gold" type="button" id="btn-aisling">添加隐秘词缀 · ' + costText(prices.aisling || 160) + '</button></div>';
+      '<div class="aisling-action"><button class="btn gold" type="button" id="btn-aisling">添加隐秘词缀 · ' + costText(prices.aisling || 160) + '</button>' +
+      '<button class="btn ghost" type="button" id="btn-veiled-exalt" ' + (E.veiledExaltAvailability(item) ? 'disabled title="' + esc(E.veiledExaltAvailability(item)) + '"' : '') + '>隐秘崇高石 · ' + costText(prices.veiledExalt || 30) + '</button></div>';
     const btn = $('#btn-aisling');
     if (btn) btn.onclick = () => chooseTool({ type: 'aisling' });
+    const exalt = $('#btn-veiled-exalt');
+    if (exalt) exalt.onclick = () => chooseTool({ type: 'veiled_exalt' });
   }
   function renderAwakenerActions(body) {
     const item = state.item;
@@ -2311,7 +2314,7 @@
     const fields = D.priceFields || [
       ['chaos', '混沌石'], ['exalted', '崇高石'], ['annulment', '剥离石'], ['alteration', '改造石'],
       ['regal', '富豪石'], ['alchemy', '点金石'], ['transmute', '蜕变石'], ['augmentation', '增幅石'],
-      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['recombine', '重组器'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
+      ['scour', '重铸石'], ['divine', '神圣石'], ['vaal', '瓦尔宝珠'], ['awakener', '觉醒者之石'], ['aisling', '爱斯琳'], ['influenceExalt', '势力崇高石'], ['taintedChaos', '腐化混沌石'], ['taintedExalted', '腐化崇高石'], ['taintedDivine', '腐化神圣石'], ['taintedAnnul', '腐化剥离石'], ['veiledChaos', '隐秘混沌石'], ['veiledExalt', '隐秘崇高石'], ['jeweller', '珠宝匠宝珠'], ['fusing', '链结石'], ['chromatic', '幻色石'], ['recombine', '重组器'], ['harvest', '庄园重铸'], ['lock', 'meta 锁前/锁后'],
       ['multimod', '多重工艺'], ['essenceMult', '精华价格倍率'], ['fossilMult', '化石价格倍率'],
     ];
     const essenceSection = D.essences.length
