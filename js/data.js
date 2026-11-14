@@ -1497,6 +1497,170 @@
     },
   ].forEach((e) => { if (!essences.some((x) => x.id === e.id)) essences.push(e); });
 
+  /* Tier 1 / 2：低语 / 呢喃。低阶精华只能升级普通物品。 */
+  const lowTierSpecs = [
+    {
+      id: 'greed', name: '贪婪', color: '#d8c27a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'life', text: '+{0} 最大生命', tags: ['life'], v2: [[16, 30]], v1: [[11, 15]] },
+        weapon: { affix: 'suffix', group: 'life_leech', text: '物理攻击伤害的 {0}% 转化为生命偷取', tags: ['life', 'attack'], v2: [[2.1, 2.4]], v1: [[1.7, 2.0]] },
+        jewellery: { affix: 'suffix', group: 'life_regen', text: '每秒回复 {0} 点生命', tags: ['life'], v2: [[8.1, 12]], v1: [[4.1, 8]] },
+      },
+      bySlot: { belt: { affix: 'suffix', group: 'flask_life', text: '药剂生命回复速度提高 {0}%', tags: ['flask', 'life'], v2: [[9, 13]], v1: [[5, 8]] } },
+    },
+    {
+      id: 'woe', name: '哀伤', color: '#9db8e8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v2: [[12, 16]], v1: [[8, 11]] },
+        weapon: { affix: 'prefix', group: 'spell_damage', text: '法术伤害提高 {0}%', tags: ['caster', 'damage'], v2: [[20, 29]], v1: [[10, 19]] },
+        jewellery: { affix: 'prefix', group: 'es_flat', text: '+{0} 最大能量护盾', tags: ['defence', 'es'], v2: [[6, 8]], v1: [[4, 5]] },
+      },
+      bySlot: { quiver: { affix: 'prefix', group: 'bow_damage', text: '弓技能伤害提高 {0}%', tags: ['attack', 'damage'], v2: [[12, 16]], v1: [[7, 11]] } },
+    },
+    {
+      id: 'zeal', name: '狂热', color: '#e8b46a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_recovery', text: '眩晕与格挡回复提高 {0}%', tags: ['defence'], v2: [[12, 14]], v1: [[8, 10]] },
+        weapon: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v2: [[12, 14]], v1: [[8, 10]] },
+        jewellery: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v2: [[5, 7]], v1: [[3, 4]] },
+      },
+      bySlot: {
+        gloves: { affix: 'suffix', group: 'attack_speed', text: '攻击速度提高 {0}%', tags: ['speed', 'attack'], v2: [[4, 6]], v1: [[2, 3]] },
+        boots: { affix: 'suffix', group: 'move_speed', text: '移动速度提高 {0}%', tags: ['speed'], v2: [[10, 10]], v1: [[5, 5]] },
+        belt: { affix: 'suffix', group: 'trap_speed', text: '陷阱与地雷投掷速度提高 {0}%', tags: ['speed'], v2: [[5, 7]], v1: [[3, 4]] },
+      },
+    },
+    {
+      id: 'loathing', name: '厌恶', color: '#c9a7e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'ailment_avoid', text: '{0}% 几率避免元素异常状态', tags: ['defence'], v2: [[8, 11]], v1: [[5, 7]] },
+        weapon: { affix: 'suffix', group: 'crit_chance_weapon', text: '暴击率提高 {0}%', tags: ['critical'], v2: [[10, 14]], v1: [[6, 9]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v2: [[9, 12]], v1: [[5, 8]] },
+      },
+      bySlot: {
+        helmet: { affix: 'suffix', group: 'reservation_efficiency', text: '魔力保留效率提高 {0}%', tags: ['mana', 'aura'], v2: [[3, 4]], v1: [[2, 3]] },
+        gloves: { affix: 'suffix', group: 'crit_chance_global', text: '全局暴击率提高 {0}%', tags: ['critical'], v2: [[8, 10]], v1: [[5, 7]] },
+        shield: { affix: 'suffix', group: 'block', text: '+{0}% 格挡率', tags: ['defence'], v2: [[25, 29]], v1: [[16, 20]] },
+      },
+    },
+    {
+      id: 'contempt', name: '蔑视', color: '#d89a7a',
+      byCat: {
+        armour: { affix: 'prefix', group: 'reflect_phys', text: '反射 {0} 点物理伤害给近战攻击者', tags: ['physical'], v2: [[6, 12]], v1: [[3, 5]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_flat', text: '增加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v2: [[4, 6], [9, 11]], v1: [[2, 4], [5, 7]] },
+        jewellery: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v2: [[3, 4], [6, 8]], v1: [[2, 3], [4, 5]] },
+      },
+      bySlot: {
+        gloves: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v2: [[3, 4], [6, 8]], v1: [[2, 3], [4, 5]] },
+        quiver: { affix: 'prefix', group: 'added_phys_attack', text: '攻击附加 {0} 到 {1} 点物理伤害', tags: ['physical', 'attack'], v2: [[3, 4], [6, 8]], v1: [[2, 3], [4, 5]] },
+      },
+    },
+    {
+      id: 'hatred', name: '憎恨', color: '#8fd8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_cold', text: '+{0}% 冰霜抗性', tags: ['resistance', 'cold'], v2: [[12, 16]], v1: [[6, 11]] },
+        weapon: { affix: 'prefix', group: 'weapon_cold_flat', text: '增加 {0} 到 {1} 点冰霜伤害', tags: ['cold', 'attack'], v2: [[9, 13], [18, 23]], v1: [[5, 8], [10, 15]] },
+        jewellery: { affix: 'prefix', group: 'cold_damage', text: '冰霜伤害提高 {0}%', tags: ['cold', 'damage'], v2: [[8, 10]], v1: [[5, 7]] },
+      },
+    },
+    {
+      id: 'anger', name: '愤怒', color: '#e88a6a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_fire', text: '+{0}% 火焰抗性', tags: ['resistance', 'fire'], v2: [[12, 16]], v1: [[6, 11]] },
+        weapon: { affix: 'prefix', group: 'weapon_fire_flat', text: '增加 {0} 到 {1} 点火焰伤害', tags: ['fire', 'attack'], v2: [[10, 14], [20, 24]], v1: [[6, 9], [11, 16]] },
+        jewellery: { affix: 'prefix', group: 'fire_damage', text: '火焰伤害提高 {0}%', tags: ['fire', 'damage'], v2: [[8, 10]], v1: [[5, 7]] },
+      },
+    },
+    {
+      id: 'wrath', name: '雷霆', color: '#f0d96a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_light', text: '+{0}% 闪电抗性', tags: ['resistance', 'lightning'], v2: [[12, 16]], v1: [[6, 11]] },
+        weapon: { affix: 'prefix', group: 'weapon_light_flat', text: '增加 {0} 到 {1} 点闪电伤害', tags: ['lightning', 'attack'], v2: [[2, 2], [35, 44]], v1: [[1, 1], [18, 26]] },
+        jewellery: { affix: 'prefix', group: 'light_damage', text: '闪电伤害提高 {0}%', tags: ['lightning', 'damage'], v2: [[8, 10]], v1: [[5, 7]] },
+      },
+    },
+    {
+      id: 'envy', name: '嫉妒', color: '#a8e88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'res_chaos', text: '+{0}% 混沌抗性', tags: ['resistance', 'chaos'], v2: [[8, 11]], v1: [[5, 7]] },
+        weapon: { affix: 'prefix', group: 'chaos_flat', text: '增加 {0} 到 {1} 点混沌伤害', tags: ['chaos', 'attack'], v2: [[7, 12], [15, 22]], v1: [[4, 7], [8, 13]] },
+        jewellery: { affix: 'prefix', group: 'chaos_damage', text: '混沌伤害提高 {0}%', tags: ['chaos', 'damage'], v2: [[8, 10]], v1: [[5, 7]] },
+      },
+    },
+    {
+      id: 'misery', name: '悲惨', color: '#9a9ae8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'mana_flat', text: '+{0} 最大魔力', tags: ['mana'], v2: [[18, 22]], v1: [[10, 14]] },
+        weapon: { affix: 'suffix', group: 'cast_speed', text: '施法速度提高 {0}%', tags: ['speed', 'caster'], v2: [[8, 11]], v1: [[5, 7]] },
+        jewellery: { affix: 'suffix', group: 'mana_regen', text: '魔力回复速度提高 {0}%', tags: ['mana'], v2: [[18, 24]], v1: [[10, 16]] },
+      },
+    },
+    {
+      id: 'doubt', name: '疑虑', color: '#9ad8b8',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v2: [[28, 44]], v1: [[15, 27]] },
+        weapon: { affix: 'suffix', group: 'accuracy', text: '+{0} 命中值', tags: ['attack'], v2: [[66, 130]], v1: [[33, 65]] },
+        jewellery: { affix: 'prefix', group: 'ev_flat', text: '+{0} 闪避值', tags: ['defence', 'evasion'], v2: [[28, 44]], v1: [[15, 27]] },
+      },
+    },
+    {
+      id: 'dread', name: '恐惧', color: '#b8a88f',
+      byCat: {
+        armour: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v2: [[28, 44]], v1: [[15, 27]] },
+        weapon: { affix: 'prefix', group: 'weapon_phys_pct', text: '{0}% 物理伤害提高', tags: ['physical', 'attack'], v2: [[5, 6]], v1: [[3, 4]] },
+        jewellery: { affix: 'prefix', group: 'ar_flat', text: '+{0} 护甲', tags: ['defence', 'armour'], v2: [[28, 44]], v1: [[15, 27]] },
+      },
+    },
+    {
+      id: 'sorrow', name: '悲伤', color: '#8fc9e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+        weapon: { affix: 'prefix', group: 'cold_pen', text: '伤害穿透 {0}% 冰霜抗性', tags: ['cold'], v2: [[3, 3]], v1: [[2, 2]] },
+        jewellery: { affix: 'suffix', group: 'dex', text: '+{0} 敏捷', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+      },
+    },
+    {
+      id: 'rage', name: '暴怒', color: '#e89a7a',
+      byCat: {
+        armour: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+        weapon: { affix: 'prefix', group: 'fire_pen', text: '伤害穿透 {0}% 火焰抗性', tags: ['fire'], v2: [[3, 3]], v1: [[2, 2]] },
+        jewellery: { affix: 'suffix', group: 'str', text: '+{0} 力量', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+      },
+    },
+    {
+      id: 'spite', name: '恶意', color: '#e8d88f',
+      byCat: {
+        armour: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+        weapon: { affix: 'prefix', group: 'light_pen', text: '伤害穿透 {0}% 闪电抗性', tags: ['lightning'], v2: [[3, 3]], v1: [[2, 2]] },
+        jewellery: { affix: 'suffix', group: 'int', text: '+{0} 智慧', tags: ['attribute'], v2: [[16, 19]], v1: [[10, 15]] },
+      },
+    },
+    {
+      id: 'scorn', name: '轻视', color: '#c9b8e8',
+      byCat: {
+        armour: { affix: 'suffix', group: 'stun_avoid', text: '{0}% 几率避免被眩晕', tags: ['defence'], v2: [[8, 11]], v1: [[5, 7]] },
+        weapon: { affix: 'suffix', group: 'spell_crit', text: '法术暴击率提高 {0}%', tags: ['critical', 'caster'], v2: [[25, 34]], v1: [[15, 24]] },
+        jewellery: { affix: 'suffix', group: 'crit_multi', text: '+{0}% 暴击伤害加成', tags: ['critical'], v2: [[9, 12]], v1: [[5, 8]] },
+      },
+    },
+  ];
+  const tierNames = { 2: '呢喃', 1: '低语' };
+  const tierIlvl = { 2: 10, 1: 2 };
+  const pickV = (def, tier) => ({ affix: def.affix, group: def.group, text: def.text, tags: def.tags, v: def['v' + tier] });
+  lowTierSpecs.forEach((spec) => {
+    [2, 1].forEach((tier) => {
+      const byCat = {};
+      const bySlot = {};
+      Object.keys(spec.byCat).forEach((k) => { byCat[k] = pickV(spec.byCat[k], tier); });
+      Object.keys(spec.bySlot || {}).forEach((k) => { bySlot[k] = pickV(spec.bySlot[k], tier); });
+      const id = spec.id + '_' + tier;
+      if (!essences.some((e) => e.id === id)) essences.push({
+        id, name: spec.name, tierName: tierNames[tier], tier, minIlvl: tierIlvl[tier], cost: tier === 2 ? 1 : 1,
+        canReforgeRare: false, color: spec.color, byCat, bySlot,
+      });
+    });
+  });
+
   const presets = [
     {
       id: 'life_helmet', name: '血量双抗头盔', desc: '入门目标：T3 生命 + T4 双抗。T4 抗性可以用工艺补最后一条，适合先跑通流程。',
@@ -1687,7 +1851,7 @@
   const data = {
     version: '1.0.1',
     configMode: 'static',
-    essenceHint: '精华只能用于普通或稀有物品，且物品等级要达到该档位要求（当前哭泣 18 / 哀嚎 30 / 尖啸 46 / 刺耳 59 / 震耳 65）；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
+    essenceHint: '精华只能用于普通或稀有物品，且物品等级要达到该档位要求（当前低语 2 / 呢喃 10 / 哭泣 18 / 哀嚎 30 / 尖啸 46 / 刺耳 59 / 震耳 65）；有 meta 工艺时不能使用。普通物品会升级为稀有并保底一条词缀；稀有物品会重铸全部非破裂词缀并保底一条。',
     taintedActions: [
       { type: 'tainted_chaos', name: '腐化混沌石', short: '腐混', color: '#b06a7a', desc: '重铸腐化稀有物品的随机词缀' },
       { type: 'tainted_exalted', name: '腐化崇高石', short: '腐崇', color: '#d19a8a', desc: '给腐化稀有物品增加一条词缀' },

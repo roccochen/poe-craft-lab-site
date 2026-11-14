@@ -1092,7 +1092,7 @@
   function renderEssenceActions(body) {
     const prices = priceOverrides();
     const tiers = [
-      { tier: 3, name: '哭泣' }, { tier: 4, name: '哀嚎' }, { tier: 5, name: '尖啸' }, { tier: 6, name: '刺耳' }, { tier: 7, name: '震耳' },
+      { tier: 1, name: '低语' }, { tier: 2, name: '呢喃' }, { tier: 3, name: '哭泣' }, { tier: 4, name: '哀嚎' }, { tier: 5, name: '尖啸' }, { tier: 6, name: '刺耳' }, { tier: 7, name: '震耳' },
     ];
     if (!tiers.some((t) => t.tier === state.essenceTier)) state.essenceTier = 7;
     const all = D.essences.filter((e) => essenceDescFor(e));
