@@ -95,7 +95,19 @@
     "greed_3": 1,
     "woe_3": 1,
     "zeal_3": 1,
-    "loathing_3": 2
+    "loathing_3": 2,
+    "contempt_3": 1,
+    "hatred_3": 1,
+    "anger_3": 1,
+    "wrath_3": 1,
+    "envy_3": 2,
+    "misery_3": 1,
+    "doubt_3": 1,
+    "dread_3": 1,
+    "sorrow_3": 1,
+    "rage_3": 1,
+    "spite_3": 1,
+    "scorn_3": 2
   },
   "fossils": {
     "pristine": 6,
