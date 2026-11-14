@@ -77,6 +77,8 @@
       configMeta: null,
       nextPullAt: 0,
       pendingResult: null,
+      selectedTool: null,
+      view: 'gear',
       collapsed: { presets: false, base: false, targets: false, actions: false, log: false, plan: false },
     };
   }
@@ -96,6 +98,8 @@
       state.configMeta = parsed.configMeta || null;
       state.nextPullAt = parsed.nextPullAt || 0;
       state.pendingResult = parsed.pendingResult && parsed.pendingResult.before && parsed.pendingResult.after ? parsed.pendingResult : null;
+      state.selectedTool = parsed.selectedTool && parsed.selectedTool.type ? parsed.selectedTool : null;
+      state.view = ['gear', 'targets', 'craft', 'log'].indexOf(parsed.view) !== -1 ? parsed.view : 'gear';
       state.collapsed = Object.assign({ presets: false, base: false, targets: false, actions: false, log: false, plan: false }, parsed.collapsed || {});
       state.item.meta = state.item.meta || { multimod: false };
       state.item.influences = state.item.influences || [];
@@ -138,7 +142,7 @@
           slot: state.slot, tab: state.tab, targetSide: state.targetSide,
           settings: state.settings, history: state.history.slice(-20),
           analysisNonce: state.analysisNonce, customTargets: state.customTargets,
-          configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null,
+          configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null, selectedTool: state.selectedTool || null, view: state.view || 'gear',
           collapsed: state.collapsed || {},
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
@@ -241,14 +245,36 @@
     $('#attempt-total').textContent = state.attempts;
     renderGameSwitch();
   }
+  function renderView() {
+    const views = ['gear', 'targets', 'craft', 'log'];
+    if (views.indexOf(state.view) === -1) state.view = 'gear';
+    $$('.view').forEach((v) => { v.hidden = v.dataset.viewPanel !== state.view; });
+    const templates = $('#section-presets');
+    if (templates) templates.hidden = state.view !== 'gear';
+    $$('#workspace-rail [data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
+    const foot = $('#rail-foot');
+    if (foot) {
+      const ev = E.evaluate(state.item, currentTargets());
+      foot.innerHTML = '<b>' + ev.matchedCount + '/' + ev.targetCount + '</b><span>目标</span>';
+    }
+  }
+  function switchView(view) {
+    if (['gear', 'targets', 'craft', 'log'].indexOf(view) === -1) return;
+    state.view = view;
+    save();
+    renderView();
+    renderJourney();
+    const stage = $('#stage');
+    if (stage) stage.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   function renderJourney() {
     const next = $('#journey-next');
     if (!next) return;
     const ev = E.evaluate(state.item, currentTargets());
     let active = 'base';
-    if (state.targets.length) active = 'craft';
-    if (!state.targets.length) active = 'targets';
-    if (state.targets.length && ev.complete) active = 'finish';
+    if (state.view === 'targets') active = 'targets';
+    if (state.view === 'craft') active = 'craft';
+    if (state.view === 'log') active = 'finish';
     const order = ['base', 'targets', 'craft', 'finish'];
     const activeIndex = order.indexOf(active);
     $$('#journey [data-step]').forEach((li) => {
@@ -260,12 +286,18 @@
     });
     if (state.pendingResult) {
       next.textContent = '先确认这一步的实际结果，再继续';
+    } else if (state.view === 'gear') {
+      next.textContent = '先选底子，或者点一个快速模板';
+    } else if (state.view === 'targets') {
+      next.textContent = '设置 2–3 条最想要的目标词缀';
+    } else if (state.view === 'log') {
+      next.textContent = '这里能看每一步的消耗和词缀变化';
     } else if (!state.targets.length) {
-      next.textContent = '先选一个模板，或者添加 2–3 条你最想要的词缀';
+      next.textContent = '还没有目标：先去「目标」设置 2–3 条';
     } else if (ev.complete) {
       next.textContent = '目标齐了：检查数值，满意就可以停';
     } else if (state.item.rarity === 'normal') {
-      next.textContent = '底子和目标都选好了，看顾问推荐做第一步';
+      next.textContent = '先选一种起手通货，或按右侧首选做第一步';
     } else {
       next.textContent = '下一步：看顾问的「先做这个」，点执行这一步';
     }
@@ -278,7 +310,7 @@
       '<div class="guide-grid">' +
       '<article class="guide-card"><span class="guide-no">1</span><h4>先选底子</h4><p>底子就是你要做的装备类型。它决定这件装备能出现哪些词缀。</p></article>' +
       '<article class="guide-card"><span class="guide-no">2</span><h4>定 2–3 条目标</h4><p>挑你最终最想保留的属性。T1 最好，T4 较低；先少选几条，成功率会高很多。</p></article>' +
-      '<article class="guide-card"><span class="guide-no">3</span><h4>跟着推荐做</h4><p>顾问会告诉你下一步、成功率、风险和平均花费。做完一步后，先在页面里确认游戏中的实际结果，顾问再给下一步。</p></article>' +
+      '<article class="guide-card"><span class="guide-no">3</span><h4>跟着推荐做</h4><p>左侧切到「做装」，先点通货，再点上方装备使用；右侧顾问会告诉你成功率、风险和花费。做完一步后先确认游戏中的实际结果。</p></article>' +
       '<article class="guide-card"><span class="guide-no">4</span><h4>收尾检查</h4><p>目标齐了再补数值。做错了点「撤销」；想保留当前结果就点「保存方案」。</p></article>' +
       '</div>' +
       '<h4 class="guide-sub">几个会反复看到的词</h4>' +
@@ -390,6 +422,7 @@
     const el = $('#target-list');
     if (!state.targets.length) {
       el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方添加，或直接点一个快速模板。</div>';
+      renderTargetSummary();
       return;
     }
     el.innerHTML = state.targets.map((t, i) => {
@@ -431,6 +464,7 @@
         save(); renderAll();
       };
     });
+    renderTargetSummary();
   }
   function renderTargetSideTabs() {
     $('#target-side-tabs').innerHTML = ['prefix', 'suffix'].map((s) =>
@@ -537,13 +571,30 @@
       $('#ilvl-input').value = state.ilvl;
       save();
       renderAll();
-      toast('已载入模板：' + preset.name, 'success');
+      switchView('targets');
+      toast('已载入模板：' + preset.name + '，下一步可以看目标或开始做装。', 'success');
     };
     if (state.item.affixes.length || state.log.length || state.spent > 0) {
       openConfirm('载入模板？', '当前物品和制作记录会被重置，目标词缀会替换为模板内容。', apply);
     } else {
       apply();
     }
+  }
+  function renderTargetSummary() {
+    const list = $('#target-summary-list');
+    const empty = $('#target-summary-empty');
+    if (!list) return;
+    const targets = currentTargets();
+    const ev = E.evaluate(state.item, targets);
+    $('#target-summary-count').textContent = ev.matchedCount + ' / ' + ev.targetCount;
+    $('#target-summary-fill').style.width = Math.round(ev.progress * 100) + '%';
+    list.innerHTML = targets.map((t) => {
+      const def = E.getTargetDef(t.modId);
+      if (!def) return '';
+      const hit = E.findMatchingAffix(state.item, t);
+      return '<li class="' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>T' + (t.tier || 1) + '+</em><i>' + (hit ? '✓' : '') + '</i></li>';
+    }).join('');
+    if (empty) empty.hidden = targets.length > 0;
   }
   function renderPresets() {
     $('#preset-list').innerHTML = D.presets.map((p) =>
@@ -677,6 +728,7 @@
     state.routeStats = null;
     state.autoSteps = 0;
     state.pendingResult = null;
+    state.selectedTool = null;
   }
   function actionPhase(type) {
     if (type === 'transmute' || type === 'alchemy') return '起手';
@@ -777,7 +829,7 @@
       b.onclick = () => {
         const reason = basicAvailability(b.dataset.basic);
         if (reason) { toast(reason, 'error'); return; }
-        performAction({ type: b.dataset.basic });
+        chooseTool({ type: b.dataset.basic });
       };
     });
   }
@@ -814,7 +866,7 @@
         const e = D.essences.find((x) => x.id === b.dataset.essence);
         const reason = e && typeof E.essenceAvailability === 'function' ? E.essenceAvailability(state.item, e) : null;
         if (reason) { toast(reason, 'error'); return; }
-        performAction({ type: 'essence', essenceId: b.dataset.essence });
+        chooseTool({ type: 'essence', essenceId: b.dataset.essence });
       };
     });
   }
@@ -856,7 +908,7 @@
       if (!state.fossilSelection.length) return;
       const ids = state.fossilSelection.slice();
       state.fossilSelection = [];
-      performAction({ type: 'fossil', fossilIds: ids });
+      chooseTool({ type: 'fossil', fossilIds: ids });
     };
   }
   function renderHarvestActions(body) {
@@ -874,7 +926,7 @@
     $$('#action-body [data-harvest]').forEach((b) => {
       b.onclick = () => {
         if (state.item.rarity !== 'rare') { toast('庄园重铸只能用于稀有物品。', 'error'); return; }
-        performAction({ type: 'harvest', tag: b.dataset.harvest });
+        chooseTool({ type: 'harvest', tag: b.dataset.harvest });
       };
     });
   }
@@ -898,7 +950,7 @@
       b.onclick = () => {
         const reason = E.omenAvailability(state.item, b.dataset.omen);
         if (reason) { toast(reason, 'error'); return; }
-        performAction({ type: 'omen', omenId: b.dataset.omen });
+        chooseTool({ type: 'omen', omenId: b.dataset.omen });
       };
     });
   }
@@ -940,17 +992,17 @@
       '</div><button class="btn tiny" id="btn-multimod" ' + (rare && !(state.item.meta && state.item.meta.multimod) ? '' : 'disabled') + '>多重工艺 ' + costText(prices.multimod || 36) + '</button></div>';
     body.innerHTML = html;
     $$('#action-body [data-bench]').forEach((b) => {
-      b.onclick = () => performAction({ type: 'bench', benchId: b.dataset.bench });
+      b.onclick = () => chooseTool({ type: 'bench', benchId: b.dataset.bench });
     });
     $$('#action-body [data-lock]').forEach((b) => {
       b.onclick = () => {
         const side = b.dataset.lock;
         const method = b.dataset.method;
-        performAction({ type: method === 'scour' ? 'lock_scour' : 'lock_chaos', side });
+        chooseTool({ type: method === 'scour' ? 'lock_scour' : 'lock_chaos', side });
       };
     });
     const mm = $('#btn-multimod');
-    if (mm) mm.onclick = () => performAction({ type: 'multimod' });
+    if (mm) mm.onclick = () => chooseTool({ type: 'multimod' });
   }
 
   /* ------------------------------------------------------------------ perform */
@@ -988,6 +1040,9 @@
   function performAction(action, opts) {
     opts = opts || {};
     if (state.pendingResult) { toast('先确认上一步的实际结果，再执行新的操作。', 'error'); return false; }
+    state.selectedTool = null;
+    if (!opts.fromAuto) state.view = 'craft';
+    renderToolBanner();
     if (!opts.fromAuto && state.autoRunning) stopAuto('已手动接管');
     const before = E.clone(state.item);
     const res = E.applyAction(before, action, { prices: priceOverrides() });
@@ -1017,6 +1072,7 @@
     renderLog();
     renderAdvisor();
     renderJourney();
+    renderView();
     renderResultPrompt();
     if (!opts.silent && !opts.fromAuto && state.pendingResult) {
       const prompt = $('#result-prompt');
@@ -1029,6 +1085,50 @@
       }
     }
     return true;
+  }
+  function clearSelectedTool() {
+    state.selectedTool = null;
+    renderToolBanner();
+  }
+  function renderToolBanner() {
+    const el = $('#tool-banner');
+    const card = $('#item-card');
+    if (!el) return;
+    const tool = state.selectedTool;
+    if (!tool) {
+      el.hidden = true;
+      el.innerHTML = '';
+      if (card) card.classList.remove('armed');
+      return;
+    }
+    el.hidden = false;
+    el.innerHTML = '<div class="tool-banner-main"><span>已选择</span><b>' + esc(A.actionTitle(tool)) + '</b><em>' + costText(E.actionCost(tool, priceOverrides())) + '</em></div>' +
+      '<div class="tool-banner-actions"><button class="btn gold" type="button" data-use-tool>点击装备使用</button><button class="btn ghost" type="button" data-cancel-tool>取消</button></div>' +
+      '<p>也可以直接点击上方装备卡使用。</p>';
+    const use = el.querySelector('[data-use-tool]');
+    if (use) use.onclick = useSelectedTool;
+    const cancel = el.querySelector('[data-cancel-tool]');
+    if (cancel) cancel.onclick = clearSelectedTool;
+    if (card) card.classList.add('armed');
+  }
+  function chooseTool(action) {
+    if (state.pendingResult) { toast('先确认上一步的实际结果，再选择新的通货。', 'error'); return; }
+    if (state.autoRunning) stopAuto('已手动接管');
+    state.selectedTool = E.clone(action);
+    save();
+    switchView('craft');
+    renderToolBanner();
+    const banner = $('#tool-banner');
+    if (banner) setTimeout(() => banner.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    toast('已选择「' + A.actionTitle(action) + '」，点击上方装备使用。', 'success', 3000);
+  }
+  function useSelectedTool() {
+    const tool = state.selectedTool;
+    if (!tool) return;
+    state.selectedTool = null;
+    save();
+    renderToolBanner();
+    performAction(tool);
   }
   function resultActionsHtml() {
     return '<div class="result-actions">' +
@@ -1101,6 +1201,7 @@
     if (state.autoRunning) stopAuto('已撤销，连续执行停止。');
     const snap = state.history.pop();
     state.pendingResult = null;
+    state.selectedTool = null;
     state.item = snap.item;
     state.log = snap.log;
     state.spent = snap.spent;
@@ -1486,6 +1587,7 @@
     if (state.history.length > 40) state.history.shift();
     state.item = E.clone(draft);
     state.pendingResult = null;
+    state.selectedTool = null;
     E.syncUid(state.item);
     state.item.influences = (state.item.influences || state.influences).slice();
     state.baseId = state.item.baseId;
@@ -1853,6 +1955,7 @@
       state.history = [];
       state.routeStats = null;
       state.pendingResult = null;
+      state.selectedTool = null;
       state.fossilSelection = [];
       $('#ilvl-input').value = state.ilvl;
       save(); renderAll();
@@ -1907,14 +2010,21 @@
     applyCollapsedState();
   }
   function bindStatic() {
+    $$('#workspace-rail [data-view]').forEach((btn) => {
+      btn.onclick = () => switchView(btn.dataset.view);
+    });
+    $$('[data-open-view]').forEach((el) => {
+      el.onclick = (e) => { e.stopPropagation(); switchView(el.dataset.openView); };
+      el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchView(el.dataset.openView); } };
+    });
     $$('#journey [data-jump]').forEach((btn) => {
       btn.onclick = () => {
-        const target = {
-          base: '#step-base', targets: '#step-targets',
-          craft: '#step-craft', finish: '#step-finish',
-        }[btn.dataset.jump];
-        const el = target && $(target);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const map = { base: 'gear', targets: 'targets', craft: 'craft', finish: 'craft' };
+        switchView(map[btn.dataset.jump] || 'craft');
+        if (btn.dataset.jump === 'finish') {
+          const el = $('#step-finish');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       };
     });
     $$('[data-collapse]').forEach((btn) => {
@@ -1935,6 +2045,13 @@
       dot.onclick = openGuide;
       dot.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openGuide(); } };
     });
+    const itemCard = $('#item-card');
+    if (itemCard) {
+      itemCard.onclick = (e) => {
+        if (e.target.closest('button, a, input, select')) return;
+        if (state.selectedTool) useSelectedTool();
+      };
+    }
     $('#base-search').addEventListener('input', (e) => { state.baseSearch = e.target.value; renderBases(); });
     $('#target-search').addEventListener('input', (e) => { state.targetSearch = e.target.value; renderTargetPool(); });
     $('#ilvl-input').addEventListener('change', (e) => {
@@ -2015,6 +2132,7 @@
     renderSlotTabs();
     renderBases();
     renderTargets();
+    renderTargetSummary();
     renderTargetSideTabs();
     renderTargetPool();
     renderPresets();
@@ -2026,6 +2144,8 @@
     renderAdvisor();
     renderJourney();
     renderResultPrompt();
+    renderToolBanner();
+    renderView();
     renderAutoButton();
     renderConfigBadge();
     applyCollapsedState();
