@@ -2183,6 +2183,36 @@
   /* 词缀 / 精华数据在浏览器里是按需注入的（js/data-poe2.js 的 installHeavyData）。
    * 数据到齐后调这个把索引补齐：原地清空再填，外部已经拿到的 modById / targetById
    * 引用继续有效，不用重新取。 */
+  /* 破裂底子：列出这个底子能掉的词缀（选择要把哪几条设为破裂） */
+  function fractureCandidates(baseId, ilvl, influences) {
+    const item = createItem(baseId, { ilvl, influences, rarity: 'rare' });
+    const base = getBase(item.baseId);
+    if (!base) return [];
+    return D.mods.filter((mod) => modEligibleOnBase(mod, base, item) && eligibleTiers(mod, item.ilvl || base.ilvl).length);
+  }
+  /* 生成一件带指定破裂词缀的稀有底子（PoE2 之前只有 PoE1 引擎有这两个函数，
+   * 界面的「破裂底子」按钮在 PoE2 下一直是坏的） */
+  function makeFracturedItem(baseId, opts) {
+    opts = opts || {};
+    const rng = opts.rng || defaultRng;
+    const item = createItem(baseId, { ilvl: opts.ilvl, influences: opts.influences, rarity: 'rare' });
+    const used = existingGroups(item);
+    const wanted = (opts.modIds || (opts.modId ? [opts.modId] : [])).slice(0, 3);
+    for (const id of wanted) {
+      const mod = modById[id];
+      if (!mod) continue;
+      if (used[mod.group]) continue;
+      if (!canAdd(item, mod.affix)) continue;
+      const tiers = eligibleTiers(mod, item.ilvl);
+      if (!tiers.length) continue;
+      item.affixes.push(makeAffix(mod, tiers[tiers.length - 1], rng, { fractured: true }));
+      used[mod.group] = true;
+    }
+    return item;
+  }
+  api.fractureCandidates = fractureCandidates;
+  api.makeFracturedItem = makeFracturedItem;
+
   /* 破裂词缀是「锁定的」，很适合当起点：直接把它们列成目标。
    * 返回的是目标规格（modId + 档位），能直接塞进 state.targets。 */
   function fracturedTargets(item) {

@@ -111,6 +111,25 @@
       budget: 100,
     };
   }
+  /* 预设里的档位是按「全局名次」写的，但不同底子能掉的档位不一样：
+   * 头盔的生命最高只能掉到全局 T5，写成 T3 就永远不可达（新用户一进来就看到「目标不可达」）。
+   * 这里把不可达的档位夹到该底子真正能掉的最好一档。 */
+  function normalizeTargetTiers(targets, baseId, ilvl) {
+    const base = E.getBase(baseId);
+    if (!base) return targets || [];
+    const lv = ilvl || base.ilvl;
+    return (targets || []).map((t) => {
+      const def = E.getTargetDef(t.modId);
+      if (!def || def.isEssence || !t.tier) return t;
+      const ladder = E.baseTierLadder(def, base).filter((x) => x.ilvl <= lv);
+      if (!ladder.length) return t;
+      if (ladder.some((x) => x.rankGlobal === Number(t.tier))) return t;
+      /* 预设的目标是给人练手的，夹到「本底第二好」比夹到极限更友好 */
+      const pick = ladder[Math.max(0, ladder.length - 2)];
+      return Object.assign({}, t, { tier: pick.rankGlobal });
+    });
+  }
+
   function defaultState() {
     const p = D.presets[0];
     const ilvl = p.ilvl || 86;
@@ -120,7 +139,7 @@
       ilvl,
       influences,
       item: E.createItem(p.baseId, { ilvl, influences }),
-      targets: p.targets.map((t) => Object.assign({}, t)),
+      targets: normalizeTargetTiers(p.targets.map((t) => Object.assign({}, t)), p.baseId, ilvl),
       log: [],
       spent: 0,
       attempts: 0,
@@ -187,6 +206,7 @@
       state.slot = E.getBase(state.baseId).slot;
       state.targets = (state.targets || []).filter((t) => E.getTargetDef(t.modId));
       state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.item.influences, state.item.ilvl));
+      state.targets = normalizeTargetTiers(state.targets, state.baseId, state.item.ilvl);
       state.log = state.log || [];
       state.history = state.history || [];
       state.autoRunning = false;
@@ -1111,7 +1131,7 @@
     resetProgress();
     save();
     renderAll();
-    toast('已生成破裂底子：' + (modIds && modIds.length ? modIds.length + ' 条指定破裂词缀' : '1 条随机破裂词缀') + ' + 普通词缀。', 'success', 4200);
+    toast('已生成破裂底子：' + (modIds && modIds.length ? modIds.length + ' 条指定破裂词缀' : '1 条随机破裂词缀') + '（锁定不可移除）。', 'success', 4200);
   }
   function openFracturePicker() {
     const candidates = E.fractureCandidates(state.baseId, state.ilvl, state.influences);
@@ -3198,7 +3218,7 @@
      * 玩家可能正好在用「破裂底子 + 还没设目标」的状态，刷新一次就被清空就太伤了。 */
     if (!state.targets.length && !((state.item && state.item.affixes) || []).length) {
       const p = D.presets[0];
-      state.targets = p.targets.map((t) => Object.assign({}, t));
+      state.targets = normalizeTargetTiers(p.targets.map((t) => Object.assign({}, t)), p.baseId, p.ilvl);
       state.baseId = p.baseId;
       state.ilvl = p.ilvl || 86;
       state.influences = (p.influences || []).slice();

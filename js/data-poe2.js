@@ -230,9 +230,11 @@
 
   const presets = [
     {
-      id: 'poe2_life_helmet', name: '生命双抗头盔', desc: '护甲头盔：生命 + 火抗 + 冰抗，练手与实战都常用。',
+      id: 'poe2_life_helmet', name: '生命双抗头盔', desc: '护甲头盔：生命 + 抗性，练手与实战都常用。',
       baseId: 'rusted_greathelm', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }],
+      /* 三个目标都要高档的话期望会到 1000c+，对新手太劝退；
+       * 默认只把「生命」卡到本底最高档（tier 3 会被夹到该底子能掉的最好档），其余任意档。 */
+      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: null }, { modId: 'fireresist_s', tier: null }],
     },
     {
       id: 'poe2_es_helmet', name: 'ES 双抗头盔', desc: '智慧底子：生命 + 火抗 + 电抗，适合法系。',
