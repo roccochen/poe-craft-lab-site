@@ -507,9 +507,236 @@
     next.affixes = next.affixes.filter((a) => a.uid !== affix.uid);
     return next;
   }
+  /* ------------------------------------------------------------------ *
+   * 精确展开工具：把「最终命中数」当分布逐项展开
+   * ------------------------------------------------------------------ */
+  function exactAggregate(baseMatched, K, dist, type) {
+    let pImprove = 0;
+    let pRegress = 0;
+    let pComplete = 0;
+    for (const [m, p] of dist) {
+      if (m > baseMatched) pImprove += p;
+      if (m < baseMatched) pRegress += p;
+      if (K > 0 && m === K) pComplete += p;
+    }
+    return {
+      exact: true,
+      type,
+      pImprove,
+      pComplete,
+      pRegress,
+      baseMatched,
+      targetCount: K,
+      dist: [...dist].sort((a, b) => a[0] - b[0]).map(([matched, prob]) => ({ matched, prob })),
+    };
+  }
+
+  /* 删一条（按给定受害者集合等概率）→ 可选再加一条 */
+  function exactRemoveOutcome(item, targets, opts, victims, withAdd, type) {
+    const ev = evaluate(item, targets);
+    const K = targets.length;
+    const dist = new Map();
+    const bump = (m, p) => { if (p > 0) dist.set(m, (dist.get(m) || 0) + p); };
+    const n = victims.length;
+    if (!n) return null;
+    const per = 1 / n;
+    for (const victim of victims) {
+      const post = withoutAffix(item, victim);
+      const pe = evaluate(post, targets);
+      if (!withAdd) { bump(pe.matchedCount, per); continue; }
+      const open = ['prefix', 'suffix'].filter((s) => canAdd(post, s));
+      if (!open.length) { bump(pe.matchedCount, per); continue; }
+      const sp = sideProbabilities(post, targets.map((t) => t.modId));
+      let pGain = 0;
+      for (const side of open) {
+        const w = sp[side] || 0;
+        if (w > 0) pGain += w * exactAddOutcome(post, side, targets, opts).pImprove;
+      }
+      bump(pe.matchedCount, per * (1 - pGain));
+      bump(pe.matchedCount + 1, per * pGain);
+    }
+    return exactAggregate(ev.matchedCount, K, dist, type);
+  }
+
+  /* 造一条「假设抽到了这个组」的词缀，只用于推演，不写回物品 */
+  function withFabricatedAffix(item, side, group, modId, rank, ilvl, essence) {
+    const next = clone(item);
+    const uid = (next.affixes || []).reduce((m, a) => Math.max(m, Number(a.uid) || 0), 0) + 1;
+    next.affixes = next.affixes.concat([{
+      uid,
+      modId: modId || group,
+      group,
+      affix: side,
+      name: '',
+      tierRank: rank || 1,
+      tierIlvl: ilvl || 1,
+      values: [],
+      text: '',
+      tags: [],
+      crafted: false,
+      fractured: false,
+      essence: !!essence,
+      influence: null,
+      benchId: null,
+    }]);
+    return next;
+  }
+
+  /* 一次加两条（高阶崇高）：按第一抽的「组」展开，第二抽再解析计算。
+   * 同一组里属于目标档位的部分算命中，超出档位的部分只是占位（group 仍会被排除）。 */
+  function exactTwoAddOutcome(item, targets, opts) {
+    const ev = evaluate(item, targets);
+    const K = targets.length;
+    const open0 = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
+    if (!open0.length) return null;
+    const sp = sideProbabilities(item, targets.map((t) => t.modId));
+    const dist = new Map();
+    const bump = (m, p) => { if (p > 0) dist.set(m, (dist.get(m) || 0) + p); };
+    const secondGain = (post) => {
+      const open1 = ['prefix', 'suffix'].filter((s) => canAdd(post, s));
+      if (!open1.length) return 0;
+      const sp1 = sideProbabilities(post, targets.map((t) => t.modId));
+      let pGain = 0;
+      for (const s1 of open1) {
+        const w = sp1[s1] || 0;
+        if (w > 0) pGain += w * exactAddOutcome(post, s1, targets, opts).pImprove;
+      }
+      return pGain;
+    };
+    for (const side of open0) {
+      const ps = sp[side] || 0;
+      if (!ps) continue;
+      const pool = exactAddPool(item, side, opts);
+      if (!pool.total) continue;
+      for (const g of pool.groups) {
+        const pDraw = ps * g.prob;
+        // 这一组里有多大比例落在某个目标的档位内
+        let pHit = 0;
+        for (const tg of targets) {
+          const def = getTargetDef(tg.modId);
+          if (!def || targetGroup(def) !== g.group) continue;
+          const cap = tg.tier ? Number(tg.tier) : null;
+          pHit = cap
+            ? pool.rows.filter((r) => r.group === g.group && r.tierRank <= cap).reduce((s, r) => s + r.prob, 0)
+            : g.prob;
+          break;
+        }
+        const postHit = pHit > 0 ? withFabricatedAffix(item, side, g.group, g.modId, g.bestTierRank, g.bestTierIlvl, false) : null;
+        const postJunk = withFabricatedAffix(item, side, g.group, g.modId, 999, g.bestTierIlvl, false);
+        const gainJunk = secondGain(postJunk);
+        const peJunk = evaluate(postJunk, targets);
+        if (pHit > 0) {
+          const peHit = evaluate(postHit, targets);
+          const gainHit = secondGain(postHit);
+          // pHit 已经是池内绝对概率，不能再乘 g.prob
+          bump(peHit.matchedCount, ps * pHit * (1 - gainHit));
+          bump(peHit.matchedCount + 1, ps * pHit * gainHit);
+        }
+        const pJunkPart = pDraw - ps * pHit;
+        bump(peJunk.matchedCount, pJunkPart * (1 - gainJunk));
+        bump(peJunk.matchedCount + 1, pJunkPart * gainJunk);
+      }
+    }
+    return exactAggregate(ev.matchedCount, K, dist, 'omen_exec');
+  }
+
+  /* 预兆组合（定向崇高 / 高阶崇高 / 定向抹除 / 削切）的精确结果 */
+  function exactOmenOutcomes(item, action, targets, opts) {
+    const omen = (D.omens || []).find((o) => o.id === action.omenId);
+    if (!omen) return null;
+    if (hasArmedOmenFor(item, action.currency)) return null;
+    const ev = evaluate(item, targets);
+    const K = targets.length;
+    if (ev.complete) {
+      return { exact: true, type: 'omen_exec', pImprove: 0, pComplete: 0, pRegress: 0, baseMatched: ev.matchedCount, targetCount: K, dist: [{ matched: ev.matchedCount, prob: 1 }] };
+    }
+    if (action.currency === 'exalted') {
+      if (omen.effect === 'add_two') return item.rarity === 'rare' ? exactTwoAddOutcome(item, targets, opts) : null;
+      const side = omen.effect === 'add_prefix' ? 'prefix' : omen.effect === 'add_suffix' ? 'suffix' : null;
+      if (!side) return null;
+      if (item.rarity !== 'rare' || !canAdd(item, side)) return null;
+      const o = exactAddOutcome(item, side, targets, opts);
+      return {
+        exact: true,
+        type: 'omen_exec',
+        pImprove: o.pImprove,
+        pComplete: o.pComplete,
+        pRegress: 0,
+        baseMatched: ev.matchedCount,
+        targetCount: K,
+        dist: o.pImprove > 0
+          ? [{ matched: ev.matchedCount, prob: 1 - o.pImprove }, { matched: ev.matchedCount + 1, prob: o.pImprove }].filter((x) => x.prob > 0)
+          : [{ matched: ev.matchedCount, prob: 1 }],
+      };
+    }
+    if (action.currency === 'chaos') {
+      if (item.rarity !== 'rare') return null;
+      let victims = item.affixes.filter((a) => !a.fractured);
+      if (omen.effect === 'remove_prefix_only' || omen.effect === 'remove_suffix_only') {
+        const side = omen.effect === 'remove_prefix_only' ? 'prefix' : 'suffix';
+        victims = victims.filter((a) => a.affix === side);
+      } else if (omen.effect === 'remove_lowest') {
+        if (!victims.length) return null;
+        const min = Math.min(...victims.map((a) => a.tierIlvl || 1));
+        victims = victims.filter((a) => (a.tierIlvl || 1) === min);
+      } else {
+        return null;
+      }
+      if (!victims.length) return null;
+      return exactRemoveOutcome(item, targets, opts, victims, true, 'omen_exec');
+    }
+    return null;
+  }
+
+  /* 精华：低阶 = 确定性加一条；完美 = 先随机删一条再加保底 */
+  function exactEssenceOutcomes(item, action, targets, opts) {
+    const ess = essenceById[action.essenceId] || (D.essences || []).find((e) => e.id === action.essenceId);
+    if (!ess) return null;
+    const ev = evaluate(item, targets);
+    const K = targets.length;
+    const defs = targets.map((t) => getTargetDef(t.modId)).filter((d) => d && d.isEssence && d.essenceId === ess.id);
+    if (!defs.length) return null;
+    const def = defs[0];
+    const side = def.affix;
+    if (ev.complete) {
+      return { exact: true, type: 'essence', pImprove: 0, pComplete: 0, pRegress: 0, baseMatched: ev.matchedCount, targetCount: K, dist: [{ matched: ev.matchedCount, prob: 1 }] };
+    }
+    if (!ess.perfect) {
+      if (item.rarity !== 'magic' || !canAdd(item, side)) return null;
+      const post = withFabricatedAffix(item, side, def.group, def.modId, 1, 1, true);
+      const pe = evaluate(post, targets);
+      return {
+        exact: true, type: 'essence',
+        pImprove: pe.matchedCount > ev.matchedCount ? 1 : 0,
+        pComplete: pe.complete ? 1 : 0,
+        pRegress: 0,
+        baseMatched: ev.matchedCount,
+        targetCount: K,
+        dist: [{ matched: pe.matchedCount, prob: 1 }],
+      };
+    }
+    if (item.rarity !== 'rare') return null;
+    const removable = item.affixes.filter((a) => !a.fractured);
+    if (!removable.length) return null;
+    const dist = new Map();
+    const bump = (m, p) => { if (p > 0) dist.set(m, (dist.get(m) || 0) + p); };
+    const per = 1 / removable.length;
+    for (const victim of removable) {
+      const post = withoutAffix(item, victim);
+      const pe = evaluate(post, targets);
+      if (!canAdd(post, side)) { bump(pe.matchedCount, per); continue; }
+      const post2 = withFabricatedAffix(post, side, def.group, def.modId, 1, 1, true);
+      const pe2 = evaluate(post2, targets);
+      bump(pe2.matchedCount, per);
+    }
+    return exactAggregate(ev.matchedCount, K, dist, 'essence');
+  }
+
   function exactActionOutcomes(item, action, targets, opts) {
     targets = targets || [];
     const type = action && action.type;
+    if (type === 'omen_exec') return exactOmenOutcomes(item, action, targets, opts);
+    if (type === 'essence') return exactEssenceOutcomes(item, action, targets, opts);
     if (type !== 'annulment' && type !== 'chaos') return null;
     if (type === 'chaos' && item.rarity !== 'rare') return null;
     if (hasArmedOmenFor(item, type)) return null;

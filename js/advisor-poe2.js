@@ -253,27 +253,13 @@
         pRegress = 0;
         exact = true;
       } else if (typeof E.exactActionOutcomes === 'function' &&
-        (action.type === 'annulment' || action.type === 'chaos')) {
-        // 剥离 / 混沌：等概率删一条再（可能）加一条，可以解析展开
+        (action.type === 'annulment' || action.type === 'chaos' || action.type === 'omen_exec' || action.type === 'essence')) {
+        // 剥离 / 混沌 / 预兆组合 / 精华：都能解析展开（枚举受害者 / 逐组展开）
         const exo = E.exactActionOutcomes(item, action, targets || [], {});
         if (exo) {
           pImprove = exo.pImprove;
           pComplete = exo.pComplete;
           pRegress = exo.pRegress;
-          exact = true;
-        }
-      } else if (action.type === 'essence') {
-        /* 低阶精华是确定性的：升稀有 + 加保底那条，不会失手。
-         * 完美精华会先随机删一条，仍然交给抽样。 */
-        const ess = (D.essences || []).find((x) => x.id === action.essenceId);
-        const isMissingTarget = (targets || []).some((t) => {
-          const d = E.getTargetDef(t.modId);
-          return d && d.isEssence && d.essenceId === action.essenceId && !E.findMatchingAffix(item, t);
-        });
-        if (ess && !ess.perfect && isMissingTarget) {
-          pImprove = 1;
-          pComplete = baseEval.missing.length === 1 ? 1 : 0;
-          pRegress = 0;
           exact = true;
         }
       } else if (action.type === 'alchemy' && typeof global !== 'undefined' &&
