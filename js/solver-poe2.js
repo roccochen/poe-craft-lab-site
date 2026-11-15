@@ -48,7 +48,11 @@
         prev.duplicates += 1;
         return;
       }
-      seen.set(group, { modId: tg.modId, group, side: def.affix, tierCap: cap, bit: 0, duplicates: 1 });
+      seen.set(group, {
+        modId: tg.modId, group, side: def.affix, tierCap: cap, bit: 0, duplicates: 1,
+        essenceId: def.isEssence ? def.essenceId : null,
+        perfect: !!def.perfect,
+      });
     });
     const list = [...seen.values()];
     list.forEach((t, i) => { t.bit = 1 << i; });
@@ -394,6 +398,23 @@
     const cost = Number(E.actionCost({ type: 'omen_exec', omenId: def.omenId, currency: def.currency }, ctx.prices));
     return Number.isFinite(cost) && cost > 0 ? cost : 0;
   }
+  /* 精华：把「保底词缀」变成确定性的加词缀动作。
+   * 非完美档要把魔法升稀有（1 档）、完美档要先随机删一条再加。 */
+  function essenceActionsFor(s, ctx) {
+    if (s.rarity !== 'magic' && s.rarity !== 'rare') return [];
+    const out = [];
+    for (const tg of ctx.list) {
+      if (!tg.essenceId) continue;
+      if (s.mask & tg.bit) continue;                    // 这一条已经命中
+      if (tg.perfect && s.rarity !== 'rare') continue;   // 完美精华只能用于稀有
+      if (!tg.perfect && s.rarity !== 'magic') continue; // 低阶精华只能用于魔法
+      if (openSides(s, ctx, 'rare').indexOf(tg.side) === -1) continue;
+      const cost = Number(E.actionCost({ type: 'essence', essenceId: tg.essenceId }, ctx.prices)) || 0;
+      if (!(cost > 0)) continue;
+      out.push({ id: 'essence', type: 'essence', essenceId: tg.essenceId, cost });
+    }
+    return out;
+  }
   function omenActionsFor(s, ctx, c) {
     if (s.rarity !== 'rare') return [];
     const out = [];
@@ -428,6 +449,7 @@
       out.push({ id: 'transmute', type: 'transmute', cost: costOf('transmute', ctx) });
       out.push({ id: 'alchemy', type: 'alchemy', cost: costOf('alchemy', ctx) });
     } else if (s.rarity === 'magic') {
+      for (const ea of essenceActionsFor(s, ctx)) out.push(ea);
       if (c.p + c.s < 2) out.push({ id: 'augmentation', type: 'augmentation', cost: costOf('augmentation', ctx) });
       out.push({ id: 'regal', type: 'regal', cost: costOf('regal', ctx) });
       out.push({ id: 'alchemy', type: 'alchemy', cost: costOf('alchemy', ctx) });
@@ -440,6 +462,7 @@
         out.push({ id: 'chaos', type: 'chaos', cost: costOf('chaos', ctx) });
         out.push({ id: 'annulment', type: 'annulment', cost: costOf('annulment', ctx) });
       }
+      for (const ea of essenceActionsFor(s, ctx)) out.push(ea);
       for (const om of omenActionsFor(s, ctx, c)) out.push(om);
     }
     return out;
@@ -460,6 +483,26 @@
       case 'chaos_left': return chaosDist(s, ctx, 'prefix');
       case 'chaos_right': return chaosDist(s, ctx, 'suffix');
       case 'whittling': return whittlingDist(s, ctx);
+      case 'essence': {
+        const tg = ctx.list.find((x) => x.essenceId === action.essenceId);
+        if (!tg) return [];
+        const applyAdd = (st) => {
+          if (openSides(st, ctx, 'rare').indexOf(tg.side) === -1) return null;
+          return Object.assign({}, st, { rarity: 'rare', mask: st.mask | tg.bit });
+        };
+        if (!tg.perfect) {
+          const nx = applyAdd(s);
+          return nx ? [{ prob: 1, next: nx, hit: tg.bit }] : [];
+        }
+        const removals = removeDistOnSide(s, ctx, null);
+        if (!removals.length) return [];
+        const out = [];
+        for (const rm of removals) {
+          const nx = applyAdd(rm.next);
+          out.push({ prob: rm.prob, next: nx || rm.next, hit: nx ? tg.bit : 0, lost: rm.lost });
+        }
+        return out;
+      }
       default: return [];
     }
   }
@@ -479,7 +522,15 @@
     }
     /* 先做一次结构性可达性检查：某个目标在该侧的池子里根本没有可掉的行，
      * 那不管怎么点都做不出来，直接给 null，别让值迭代跑出一个假的有限值。 */
+    /* 精华目标不在自然池里，但它们有确定的来源，不能判成不可达：
+     * 完美精华随时可用（稀有可达）；低阶精华只能从普通/魔法起手（稀有降不回魔法）。 */
+    const essenceReachable = (t) => {
+      if (!t.essenceId) return false;
+      if (t.perfect) return true;
+      return ctx.init.rarity === 'normal' || ctx.init.rarity === 'magic';
+    };
     const unreachableTargets = ctx.list.filter((t) => {
+      if (essenceReachable(t)) return false;
       const probs = ctx.addProbs[t.side];
       return !probs || !probs.hits.some((h) => h.bit === t.bit);
     });
@@ -529,6 +580,31 @@
       }
       entries.set(k, list);
     }
+    /* 反向可达性：只有「能到终态」的状态才参与值迭代。
+     * 否则像「低阶精华目标但物品已经是稀有」这类永远做不完的状态，
+     * 混沌/剥离会在里面无限循环，值每轮涨一点，整个求解被判成不收敛。 */
+    const preds = new Map();
+    for (const [k, list] of entries) {
+      for (const entry of list) {
+        for (const tr of entry.trs) {
+          const nk = key(tr.next);
+          if (!preds.has(nk)) preds.set(nk, new Set());
+          preds.get(nk).add(k);
+        }
+      }
+    }
+    const canFinish = new Set();
+    for (const [k, s] of states) if (isTerminal(s, ctx)) canFinish.add(k);
+    const queue2 = [...canFinish];
+    while (queue2.length) {
+      const k = queue2.pop();
+      for (const p of preds.get(k) || []) {
+        if (canFinish.has(p)) continue;
+        canFinish.add(p);
+        queue2.push(p);
+      }
+    }
+
     const INF = Number.POSITIVE_INFINITY;
     const qOf = (k, entry, table) => {
       let sum = 0;
@@ -553,6 +629,7 @@
       iter++;
       for (const [k, s] of states) {
         if (isTerminal(s, ctx)) { V.set(k, 0); continue; }
+        if (!canFinish.has(k)) { V.set(k, INF); continue; }
         let best = INF;
         for (const entry of entries.get(k) || []) {
           const q = qOf(k, entry, V);
@@ -577,6 +654,7 @@
     const policy = new Map();
     for (const [k, s] of states) {
       if (isTerminal(s, ctx)) { P.set(k, 1); continue; }
+      if (!canFinish.has(k)) { policy.set(k, null); P.set(k, 0); continue; }
       let best = null;
       let bestQ = INF;
       for (const entry of entries.get(k) || []) {
@@ -594,6 +672,7 @@
         const a = policy.get(k);
         const entry = a ? (entries.get(k) || []).find((e) => e.action === a) : null;
         if (!entry) { P.set(k, 0); continue; }
+        if (!canFinish.has(k)) { P.set(k, 0); continue; }
         let sum = 0;
         for (const tr of entry.trs) {
           const nk = key(tr.next);
@@ -724,8 +803,14 @@
 
   /* 目标是「结构上不可达」还是「可达但概率极低」——给界面区分用 */
   function solvedUnreachable(ctx) {
+    const essenceReachable = (t) => {
+      if (!t.essenceId) return false;
+      if (t.perfect) return true;
+      return ctx.init.rarity === 'normal' || ctx.init.rarity === 'magic';
+    };
     return ctx.list
       .filter((t) => {
+        if (essenceReachable(t)) return false;
         const probs = ctx.addProbs[t.side];
         return !probs || !probs.hits.some((h) => h.bit === t.bit);
       })

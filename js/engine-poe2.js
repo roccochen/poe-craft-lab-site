@@ -70,6 +70,9 @@
   D.essences.forEach((e) => { essenceById[e.id] = e; });
   const fossilById = {};
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
+  /* 精华目标（精华保底词缀）也进目标索引：读档时就要能解析，
+   * 否则存档里选了精华目标会被当成未知词缀丢掉。 */
+  for (const et of (D.essenceTargets || [])) modById[et.id] = et;
   const targetById = Object.assign({}, modById, benchById);
 
   /* 词缀组：工艺词缀有独立组名，目标匹配与新词缀落位都要用同一张表。 */
@@ -857,6 +860,15 @@
       if (def.def) {
         const defs = baseDefenceTags(base);
         if (!def.def.some((d) => defs.indexOf(d) !== -1)) return false;
+      }
+      return true;
+    }
+    /* 精华目标：没有档位/权重，只看部位（武器再看类别） */
+    if (def.isEssence) {
+      if (def.slots && def.slots.length && def.slots.indexOf(base.slot) === -1) return false;
+      if (base.slot === 'weapon' && def.weapons && def.weapons.length) {
+        const buckets = weaponBucketsFor(base);
+        if (!def.weapons.some((w) => buckets.indexOf(w) !== -1)) return false;
       }
       return true;
     }
@@ -1951,6 +1963,8 @@
     D.essences.forEach((e) => { essenceById[e.id] = e; });
     for (const k of Object.keys(targetById)) delete targetById[k];
     Object.assign(targetById, modById, benchById);
+    // 精华保底词缀也能作为目标
+    for (const t of (D.essenceTargets || [])) targetById[t.id] = t;
     return { mods: D.mods.length, essences: D.essences.length };
   }
   api.installData = installData;

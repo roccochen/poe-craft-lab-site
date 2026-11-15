@@ -185,6 +185,35 @@
       color: ['#8fa3c8', '#9db8e8', '#e6cf9a', '#d8b4e2'][Math.min(3, Math.max(0, (e.tier || 1) - 1))],
     }));
   }
+  /* 精华目标：把「精华保底的那条词缀」变成可以选择的目标。
+   * 引擎加上的词缀 group 是 essence_<essenceId>，所以 target 的 group 必须照这个写；
+   * 一条精华在不同部位可能给不同效果，按 (essenceId, 部位组, 文案) 拆成多条目标。 */
+  let essenceTargets = [];
+  function buildEssenceTargets() {
+    const out = [];
+    for (const e of essences || []) {
+      (e.effects || []).forEach((eff, i) => {
+        if (!eff || !eff.text) return;
+        out.push({
+          id: 'essence:' + e.id + ':' + i,
+          isEssence: true,
+          essenceId: e.id,
+          group: 'essence_' + e.id,
+          affix: eff.affix,
+          name: e.tierName + (e.name || ESSENCE_ZH[e.typeId] || e.typeId) + '精华',
+          text: eff.text,
+          v: eff.v || [],
+          slots: eff.slots || [],
+          weapons: eff.weapons || [],
+          tierName: e.tierName,
+          tier: e.tier,
+          perfect: !!e.perfect,
+          cost: e.cost,
+        });
+      });
+    }
+    essenceTargets = out;
+  }
   const essenceDataMeta = GEN_ESSENCES ? {
     source: GEN_ESSENCES.source,
     license: GEN_ESSENCES.license,
@@ -378,6 +407,7 @@
   function installHeavyData() {
     const built = buildMods();
     buildEssences();
+    buildEssenceTargets();
     const datSoul = (typeof window !== 'undefined' && window.POE2_DAT_SOULCORES && window.POE2_DAT_SOULCORES.soulCores) || null;
     if (datSoul && datSoul.length) soulCores = datSoul;
     const D = global.PoE2Data;
@@ -385,6 +415,7 @@
       D.mods = mods;
       D.modDataMeta = modDataMeta;
       D.essences = essences;
+      D.essenceTargets = essenceTargets;
       D.soulCores = soulCores;
       if (built.weightSets) { D.tierWeightSets = built.weightSets; D.weightSets = built.weightSets; }
       if (built.meta) D.tierWeightMeta = built.meta;
@@ -415,6 +446,7 @@
     weightSets: null,
     tierWeightMeta: null,
     essences,
+    essenceTargets,
     essenceTiers,
     essenceDataMeta,
     runes,

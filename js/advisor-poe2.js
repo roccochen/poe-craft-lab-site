@@ -122,6 +122,16 @@
       if (item.affixes.length) list.push({ type: 'chaos' }, { type: 'annulment' });
       /* 只建模「有价格 + 规则确定」的预兆组合：以前把所有预兆当候选，
        * 但激活预兆不改变物品，抽样恒为 0 提升，等于 28 个死候选。 */
+      /* 目标本身是「精华保底词缀」时，对应精华是直达手段 */
+      for (const t of (targets || [])) {
+        const def = E.getTargetDef(t.modId);
+        if (!def || !def.isEssence || !def.essenceId) continue;
+        const ess = (D.essences || []).find((x) => x.id === def.essenceId);
+        if (!ess) continue;
+        if (typeof E.essenceAvailability === 'function' && E.essenceAvailability(item, ess)) continue;
+        if (list.some((x) => x.type === 'essence' && x.essenceId === ess.id)) continue;
+        list.push({ type: 'essence', essenceId: ess.id });
+      }
       for (const combo of OMEN_COMBOS) {
         if (typeof E.omenAvailability === 'function' && E.omenAvailability(item, combo.omenId)) continue;
         // 这里只判断「有没有价格」，用默认价格表即可；真正计价在 analyze 里带上实时价格
@@ -250,6 +260,20 @@
           pImprove = exo.pImprove;
           pComplete = exo.pComplete;
           pRegress = exo.pRegress;
+          exact = true;
+        }
+      } else if (action.type === 'essence') {
+        /* 低阶精华是确定性的：升稀有 + 加保底那条，不会失手。
+         * 完美精华会先随机删一条，仍然交给抽样。 */
+        const ess = (D.essences || []).find((x) => x.id === action.essenceId);
+        const isMissingTarget = (targets || []).some((t) => {
+          const d = E.getTargetDef(t.modId);
+          return d && d.isEssence && d.essenceId === action.essenceId && !E.findMatchingAffix(item, t);
+        });
+        if (ess && !ess.perfect && isMissingTarget) {
+          pImprove = 1;
+          pComplete = baseEval.missing.length === 1 ? 1 : 0;
+          pRegress = 0;
           exact = true;
         }
       } else if (action.type === 'alchemy' && typeof global !== 'undefined' &&

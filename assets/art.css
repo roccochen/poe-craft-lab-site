@@ -152,23 +152,6 @@ body::before {
   box-shadow: inset 2px 0 0 var(--gold), 0 6px 18px rgba(0, 0, 0, .18);
 }
 .rail-btn.active .rail-ico { color: var(--gold); }
-.rail-foot {
-  width: 54px; height: 54px;
-  margin: auto auto 3px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: conic-gradient(var(--gold) var(--p, 0%), rgba(255, 255, 255, .08) 0);
-  position: relative;
-  display: grid; place-items: center;
-}
-.rail-foot::before {
-  content: "";
-  position: absolute; inset: 4px;
-  border-radius: 50%;
-  background: #0a0f16;
-  border: 1px solid rgba(255, 255, 255, .055);
-}
 .rail-foot b, .rail-foot span { position: relative; z-index: 1; display: block; line-height: 1.2; }
 .rail-foot b { color: var(--gold-2); font-size: 11px; }
 .rail-foot span { color: var(--muted-2); font-size: 9px; letter-spacing: .06em; }
@@ -327,11 +310,6 @@ body::before {
   font-size: 12px;
 }
 .diag-label { color: #9bcdd5; font-size: 9px; letter-spacing: .14em; }
-.progress-card {
-  border-color: rgba(255, 255, 255, .075);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .018);
-}
 .progress-bar { background: rgba(255, 255, 255, .07); height: 4px; }
 .progress-bar i { background: linear-gradient(90deg, #8a6b38, #e9cd90); }
 .progress-head span { color: var(--muted); font-size: 10px; letter-spacing: .04em; }
@@ -424,14 +402,6 @@ body::before {
   color: #efdfb8;
 }
 .stage-aside-head p { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.aside-item-card, .aside-panel-card {
-  padding: 14px;
-  border: 1px solid rgba(212, 176, 106, .2);
-  border-radius: 10px;
-  background:
-    radial-gradient(120% 100% at 100% 0%, rgba(212, 176, 106, .08), transparent 62%),
-    rgba(255, 255, 255, .018);
-}
 .aside-kicker { display: block; color: var(--gold-dim); font-size: 9px; letter-spacing: .16em; }
 .aside-item-card > b { display: block; margin-top: 3px; font-family: var(--serif); font-size: 17px; letter-spacing: .06em; color: #f1e3c4; }
 .aside-item-card > em { display: block; margin-top: 2px; color: var(--muted-2); font-size: 9px; font-style: normal; letter-spacing: .04em; }
@@ -813,3 +783,16 @@ body::before {
   .panel-head-actions .btn,
   .collapse-toggle { white-space: nowrap; }
 }
+/* 标题层级：h1 20 → 面板 h2 17 → 块 h2 15 → h3 13；之前归一化把面板 h2 压到和 h1 一样大 */
+.stage-aside-head h2 { font-size: 17px; }
+/* ------------------------------------------------------------------ 标题层级收紧
+   h1 20 / h2 17 / h3 13：每一级只有一个字号，级别靠字体、字距和留白区分。
+   之前 view-head 24、aside 20、block 15、h3 15 混在一起，层级反而看不出来。 */
+.view-head h2 { font-size: 17px; }
+.block-head h2 { font-size: 17px; }
+.panel-head h2 { font-size: 17px; }
+.advisor-head h2 { font-size: 17px; }
+.stage-aside-head h2 { font-size: 17px; }
+.section-title h3 { font-size: 13px; }
+.guide-card h4 { font-size: 13px; }
+.modal-head h3 { font-size: 17px; }

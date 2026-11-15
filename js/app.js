@@ -370,10 +370,9 @@
         return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
       }).join('');
       el.innerHTML = rightHead('STEP 02', '目标决定路线', '目标越多，路线越长，单次命中概率越低。') +
-        '<div class="aside-progress"><b>' + ev.matchedCount + ' / ' + ev.targetCount + '</b><span>已命中</span></div>' +
-        '<div class="aside-progress-bar"><i style="width:' + Math.round(ev.progress * 100) + '%"></i></div>' +
         '<div class="aside-line"><span>前缀目标</span><b>' + ev.targetsBySide.prefix.length + ' / 3</b></div>' +
         '<div class="aside-line"><span>后缀目标</span><b>' + ev.targetsBySide.suffix.length + ' / 3</b></div>' +
+        '<div class="aside-line"><span>已命中</span><b>' + ev.matchedCount + ' / ' + ev.targetCount + '</b></div>' +
         '<div class="aside-note">' + (state.targets.length ? '2–3 条最容易规划；T1 最难，先设 T2–T4 更现实。' : '先添加目标，右侧做装建议才会出现。') + '</div>' +
         '<button class="btn gold wide" type="button" data-open-view="craft">开始做装 →</button>';
     } else if (stage === 'log') {
@@ -662,6 +661,7 @@
   function poolLocalRank(mod, tier) { return localRankOf(mod, tier, state.baseId); }
   /* 目标在存档里存的是全组档位，界面要换成该部位的本地下标 */
   function targetTierLabel(t, def) {
+    if (def && def.isEssence) return '保底';   // 名字里已经带「精华」，这里标的是确定性
     if (D.bench.some((b) => b.id === t.modId)) return '工艺';
     const want = t.tier ? Number(t.tier) : null;
     if (!want) return '任意档';
@@ -678,6 +678,7 @@
 
   function targetPreview(def, tierRank) {
     if (!def) return '';
+    if (def.isEssence) return E.formatText(def.text, (def.v || []).map((r) => (r[0] + r[1]) / 2));
     if (D.bench.some((b) => b.id === def.id)) {
       return E.formatText(def.text, def.v.map((r) => (r[0] + r[1]) / 2));
     }
@@ -699,9 +700,12 @@
       if (!def) return '';
       const matched = E.findMatchingAffix(state.item, t);
       const isBench = D.bench.some((b) => b.id === t.modId);
-      const chosenTier = !isBench && t.tier ? def.tiers.find((tier) => E.tierRank(def, tier) === Number(t.tier)) : null;
+      const isEssence = !!def.isEssence;
+      const chosenTier = !isBench && !isEssence && t.tier ? (def.tiers || []).find((tier) => E.tierRank(def, tier) === Number(t.tier)) : null;
       const unavailable = !!(chosenTier && chosenTier.ilvl > state.ilvl);
-      const tierOptions = !isBench
+      const tierOptions = isEssence
+        ? '<option>精华</option>'
+        : !isBench
         ? E.baseTierLadder(def, E.getBase(state.baseId)).map((x) => {
           // 值仍存全组档位（兼容已有存档），显示用该部位的本地下标：
           // 头盔上 +生命的最高档在游戏里是 T1，在全组里是 T5。
@@ -714,7 +718,7 @@
         '<span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span>' +
         '<span><span class="target-name" title="' + esc(targetPreview(def, t.tier)) + '">' + esc(def.name) + '</span>' +
         '<span class="target-sub">' + esc(targetPreview(def, t.tier)) + (unavailable ? ' · 物品等级不足' : '') + '</span></span>' +
-        '<select class="tier-select" data-tier-index="' + i + '" ' + (isBench ? 'disabled' : '') + '>' + tierOptions + '</select>' +
+        '<select class="tier-select" data-tier-index="' + i + '" ' + (isBench || isEssence ? 'disabled' : '') + '>' + tierOptions + '</select>' +
         '<button class="remove-btn" data-remove-target="' + i + '" type="button" title="移除目标">×</button></div>';
     }).join('');
     $$('#target-list [data-tier-index]').forEach((sel) => {
@@ -762,6 +766,14 @@
       if (q && (m.name + ' ' + m.text + ' ' + m.tags.join(' ')).toLowerCase().indexOf(q) === -1) return;
       natural.push(m);
     });
+    /* 精华保底词缀也能直接作为目标 */
+    (D.essenceTargets || []).forEach((tg) => {
+      if (tg.affix !== side) return;
+      if (chosen.indexOf(tg.id) !== -1) return;
+      if (!E.targetEligibleOnBase(tg.id, state.baseId, state.influences, state.ilvl)) return;
+      if (q && (tg.name + ' ' + tg.text).toLowerCase().indexOf(q) === -1) return;
+      natural.push(tg);
+    });
     D.bench.forEach((b) => {
       if (b.affix !== side) return;
       if (chosen.indexOf(b.id) !== -1) return;
@@ -777,16 +789,22 @@
     const build = (items, isBench) => {
       if (!items.length) return '';
       return items.map((m) => {
-        const eligible = isBench ? [] : m.tiers.filter((tier) => tier.ilvl <= state.ilvl);
-        const bestTier = isBench ? null : (eligible[eligible.length - 1] || m.tiers[m.tiers.length - 1]);
-        const preview = isBench
-          ? E.formatText(m.text, m.v.map((r) => (r[0] + r[1]) / 2))
-          : E.formatText(m.text, bestTier.v.map((r) => (r[0] + r[1]) / 2));
+        /* 精华目标没有档位（值固定），工艺台也一样：两者都只显示效果本身 */
+        const isEssence = !!m.isEssence;
+        const flat = isBench || isEssence;
+        const tiers = m.tiers || [];
+        const eligible = flat ? [] : tiers.filter((tier) => tier.ilvl <= state.ilvl);
+        const bestTier = flat ? null : (eligible[eligible.length - 1] || tiers[tiers.length - 1]);
+        const preview = flat
+          ? E.formatText(m.text, (m.v || []).map((r) => (r[0] + r[1]) / 2))
+          : E.formatText(m.text, (bestTier.v || []).map((r) => (r[0] + r[1]) / 2));
         const tags = (m.tags || []).filter((t) => TAG_CN[t]).slice(0, 3).map((t) => TAG_CN[t]).join(' · ');
+        const kindLabel = isEssence ? '精华' : isBench ? '工艺' : null;
+        const meta = flat ? (isEssence ? ' · 保底 1 条' : '') : (' · T' + poolLocalRank(m, bestTier) + ' / i' + bestTier.ilvl);
         return '<div class="pool-row">' +
-          '<span class="pool-info"><span class="pool-name">' + esc(m.name) + (isBench ? ' <small style="color:var(--cyan)">工艺</small>' : '') + '</span>' +
+          '<span class="pool-info"><span class="pool-name">' + esc(m.name) + (kindLabel ? ' <small style="color:var(--cyan)">' + kindLabel + '</small>' : '') + '</span>' +
           '<span class="pool-stat">' + esc(preview) + '</span>' +
-          '<span class="pool-tags">' + esc(tags) + (isBench ? '' : ' · T' + poolLocalRank(m, bestTier) + ' / i' + bestTier.ilvl) + '</span></span>' +
+          '<span class="pool-tags">' + esc(tags) + meta + '</span></span>' +
           '<button class="pool-add" type="button" data-add-target="' + m.id + '" ' + (full ? 'disabled title="该侧目标已满"' : '') + '>+</button></div>';
       }).join('');
     };
@@ -811,15 +829,16 @@
     }).length;
     if (sideCount >= 3) { toast('该侧最多 3 条目标词缀。', 'error'); return; }
     const isBench = D.bench.some((b) => b.id === modId);
+    const isEssence = !!def.isEssence;
     /* 默认档位要在「这个部位真正能掉的档」里挑，不能按全组排名——
      * 头盔上 +生命的全组 T2 根本掉不出来，会把目标设成不可达。 */
     let defaultTier = 1;
-    if (!isBench) {
+    if (!isBench && !isEssence) {
       const ladder = E.baseTierLadder(def, E.getBase(state.baseId)).filter((x) => x.ilvl <= state.ilvl);
       const chosen = ladder.length >= 2 ? ladder[ladder.length - 2] : ladder[ladder.length - 1];
       defaultTier = chosen ? chosen.rankGlobal : 1;
     }
-    state.targets.push({ modId, tier: isBench ? null : defaultTier });
+    state.targets.push({ modId, tier: (isBench || isEssence) ? null : defaultTier });
     state.customTargets = true;
     state.routeStats = null;
     save();

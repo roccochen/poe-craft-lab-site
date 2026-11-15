@@ -758,12 +758,6 @@ h1, h2, h3, p { margin: 0; }
   color: #c9c4b6;
   line-height: 1.65;
 }
-.progress-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(15, 20, 29, .55);
-  padding: 10px 11px;
-}
 .progress-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: var(--muted); }
 .progress-head b { color: var(--gold-2); font-size: 12px; font-weight: 500; letter-spacing: .04em; }
 .progress-bar { height: 5px; background: rgba(255, 255, 255, .05); border-radius: 4px; margin: 7px 0; overflow: hidden; }
