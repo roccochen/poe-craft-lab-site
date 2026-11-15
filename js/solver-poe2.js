@@ -863,6 +863,10 @@
           id: a.id,
           type: a.type,
           cost: a.cost,
+          /* 动作参数要带出去：调用方（顾问 / 界面 / 脚本）需要它才能真的执行这一步 */
+          omenId: a.omenId || null,
+          currency: a.currency || null,
+          essenceId: a.essenceId || null,
           total: Number.isFinite(total) ? total : null,
           continuable: Number.isFinite(total),
           selfProb: entry.self,
