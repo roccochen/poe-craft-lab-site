@@ -387,7 +387,7 @@
         const def = E.getTargetDef(t.modId);
         if (!def) return '';
         const hit = E.findMatchingAffix(state.item, t);
-        return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
+        return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name || def.text || def.modId) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
       }).join('');
       el.innerHTML = rightHead('STEP 02', '目标决定路线', '目标越多，路线越长，单次命中概率越低。') +
         '<div class="aside-line"><span>前缀目标</span><b>' + ev.targetsBySide.prefix.length + ' / 3</b></div>' +
@@ -781,7 +781,7 @@
         : '<option>工艺</option>';
       return '<div class="target-item ' + (matched ? 'hit' : '') + (unavailable ? ' invalid' : '') + '" data-target-index="' + i + '">' +
         '<span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span>' +
-        '<span><span class="target-name" title="' + esc(targetPreview(def, t.tier)) + '">' + esc(def.name) + '</span>' +
+        '<span><span class="target-name" title="' + esc(targetPreview(def, t.tier)) + '">' + esc(def.name || def.text || def.modId) + '</span>' +
         '<span class="target-sub">' + esc(targetPreview(def, t.tier)) + (unavailable ? ' · 物品等级不足' : '') +
           (lockedByFracture ? ' · <b class="lock-tag">破裂锁定</b>' : '') + '</span></span>' +
         '<select class="tier-select" data-tier-index="' + i + '" ' + (isBench || isEssence ? 'disabled' : '') + '>' + tierOptions + '</select>' +
@@ -869,7 +869,7 @@
         const kindLabel = isEssence ? '精华' : isBench ? '工艺' : null;
         const meta = flat ? (isEssence ? ' · 保底 1 条' : '') : (' · T' + poolLocalRank(m, bestTier) + ' / i' + bestTier.ilvl);
         return '<div class="pool-row">' +
-          '<span class="pool-info"><span class="pool-name">' + esc(m.name) + (kindLabel ? ' <small style="color:var(--cyan)">' + kindLabel + '</small>' : '') + '</span>' +
+          '<span class="pool-info"><span class="pool-name">' + esc(m.name || m.text || m.id) + (kindLabel ? ' <small style="color:var(--cyan)">' + kindLabel + '</small>' : '') + '</span>' +
           '<span class="pool-stat">' + esc(preview) + '</span>' +
           '<span class="pool-tags">' + esc(tags) + meta + '</span></span>' +
           '<button class="pool-add" type="button" data-add-target="' + m.id + '" ' + (full ? 'disabled title="该侧目标已满"' : '') + '>+</button></div>';
@@ -924,7 +924,7 @@
       const def = E.getTargetDef(t.modId);
       if (!def) return '';
       const hit = E.findMatchingAffix(state.item, t);
-      return '<li class="' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
+      return '<li class="' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name || def.text || def.modId) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
     }).join('');
     if (empty) empty.hidden = targets.length > 0;
   }
@@ -1156,7 +1156,7 @@
             const tier = tiers[tiers.length - 1];
             const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
             const on = !!selected[m.id];
-            return '<button type="button" class="fracture-row ' + (on ? 'selected' : '') + '" data-fracture-mod="' + m.id + '"><i class="fr-check">' + (on ? '✓' : '') + '</i><span>' + esc(m.name) + '</span><em>' + esc(preview) + '</em><small>T' + E.tierRank(m, tier) + '</small></button>';
+            return '<button type="button" class="fracture-row ' + (on ? 'selected' : '') + '" data-fracture-mod="' + m.id + '"><i class="fr-check">' + (on ? '✓' : '') + '</i><span>' + esc(m.name || m.text || m.id) + '</span><em>' + esc(preview) + '</em><small>T' + E.tierRank(m, tier) + '</small></button>';
           }).join('') + '</div>';
       }).join('') || '<div class="action-none">没有可用词缀。</div>';
     };
@@ -1748,7 +1748,7 @@
           const preview = E.formatText(m.text, m.v.map((r) => (r[0] + r[1]) / 2));
           return '<button class="veil-card" type="button" data-unveil-mod="' + m.id + '" ' + (state.pendingResult ? 'disabled' : '') + '>' +
             '<span class="side-badge ' + m.affix + '">' + (m.affix === 'prefix' ? '前' : '后') + '</span>' +
-            '<b>' + esc(m.name) + '</b><em>' + esc(preview) + '</em></button>';
+            '<b>' + esc(m.name || m.text || m.id) + '</b><em>' + esc(preview) + '</em></button>';
         }).join('') + '</div>';
       $$('#action-body [data-unveil-mod]').forEach((b) => {
         b.onclick = () => performAction({ type: 'unveil', veiledModId: b.dataset.unveilMod });
@@ -1826,7 +1826,7 @@
         const preview = E.formatText(m.text, tier.v.map((r) => (r[0] + r[1]) / 2));
         return '<button class="awakener-card" type="button" data-awakener-mod="' + m.id + '" data-awakener-inf="' + m.influence + '">' +
           '<span class="awakener-inf">' + esc(infName(m.influence)) + '</span>' +
-          '<b>' + esc(m.name) + '</b>' +
+          '<b>' + esc(m.name || m.text || m.id) + '</b>' +
           '<em>' + esc(preview) + '</em>' +
           '<small>最低 T' + E.tierRank(m, tier) + ' · iLv ' + tier.ilvl + '</small></button>';
       }).join('') + '</div>' : '<div class="action-none">当前底子没有可用于模拟祭品的其他势力词缀。</div>');
@@ -2471,7 +2471,7 @@
           }).join('') + '</select>';
         const preview = isBench ? E.formatText(m.text, m.v.map((r) => (r[0] + r[1]) / 2)) : E.formatText(m.text, m.tiers[m.tiers.length - 1].v.map((r) => (r[0] + r[1]) / 2));
         return '<div class="pool-row" data-manual-row="' + (m.name + ' ' + m.text + ' ' + (m.tags || []).join(' ')).toLowerCase() + '">' +
-          '<span class="pool-info"><span class="pool-name">' + esc(m.name) + (isBench ? ' <small style="color:var(--cyan)">工艺</small>' : '') + '</span>' +
+          '<span class="pool-info"><span class="pool-name">' + esc(m.name || m.text || m.id) + (isBench ? ' <small style="color:var(--cyan)">工艺</small>' : '') + '</span>' +
           '<span class="pool-stat">' + esc(preview) + '</span></span>' + tiers +
           '<button class="pool-add" type="button" data-madd="' + m.id + '">+</button></div>';
       }).join('') : '<div class="pool-empty">没有可添加的词缀。</div>';
