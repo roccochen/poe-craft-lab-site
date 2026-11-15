@@ -796,3 +796,15 @@ body::before {
 .section-title h3 { font-size: 13px; }
 .guide-card h4 { font-size: 13px; }
 .modal-head h3 { font-size: 17px; }
+
+/* 破裂底子提示：锁定的词缀可以直接当起点 */
+.fracture-hint {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+  border: 1px dashed rgba(216, 180, 226, 0.45);
+  background: rgba(216, 180, 226, 0.07);
+  font-size: 12px; line-height: 1.5; color: var(--text-dim, #b9b3a6);
+}
+.fracture-hint b { color: #d8b4e2; }
+.fracture-hint .btn.tiny { white-space: nowrap; flex: none; }
+.lock-tag { color: #d8b4e2; font-weight: 600; }

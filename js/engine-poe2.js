@@ -2183,6 +2183,27 @@
   /* 词缀 / 精华数据在浏览器里是按需注入的（js/data-poe2.js 的 installHeavyData）。
    * 数据到齐后调这个把索引补齐：原地清空再填，外部已经拿到的 modById / targetById
    * 引用继续有效，不用重新取。 */
+  /* 破裂词缀是「锁定的」，很适合当起点：直接把它们列成目标。
+   * 返回的是目标规格（modId + 档位），能直接塞进 state.targets。 */
+  function fracturedTargets(item) {
+    const out = [];
+    for (const a of item.affixes || []) {
+      if (!a.fractured) continue;
+      const def = modById[a.modId];
+      if (!def) continue;
+      out.push({
+        modId: a.modId,
+        tier: a.tierRank || 1,
+        group: a.group,
+        side: a.affix,
+        name: def.name,
+        tierIlvl: a.tierIlvl || 1,
+      });
+    }
+    return out;
+  }
+  api.fracturedTargets = fracturedTargets;
+
   function installData() {
     for (const k of Object.keys(modById)) delete modById[k];
     for (const k of Object.keys(essenceById)) delete essenceById[k];

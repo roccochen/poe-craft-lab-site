@@ -84,7 +84,39 @@
           used += p;
         }
       }
-      out[side] = { hits, junk: Math.max(0, 1 - used), poolSize: pool.rows.length, groups: new Set(pool.rows.map((r) => r.group)).size };
+      /* tierIlvl 分布：削切按「最低等级」删词，要算准就得知道每类词缀的档位分布。
+       * 废词 = 不属于任何目标（或同组但超出档位门槛）的行。 */
+      const junkTiers = [];
+      const targetTiers = new Map();
+      const norm = (rows) => {
+        const totalW = rows.reduce((s, r) => s + r.weight, 0);
+        if (!totalW) return [];
+        const by = new Map();
+        for (const r of rows) by.set(r.tierIlvl, (by.get(r.tierIlvl) || 0) + r.weight / totalW);
+        return [...by].sort((a, b) => a[0] - b[0]);
+      };
+      const junkRows = [];
+      for (const r of pool.rows) {
+        let hit = null;
+        for (const t2 of list) {
+          if (t2.side !== side || t2.group !== r.group) continue;
+          if (t2.tierCap && r.tierRank > t2.tierCap) continue;
+          hit = t2;
+          break;
+        }
+        if (!hit) { junkRows.push(r); continue; }
+        if (!targetTiers.has(hit.bit)) targetTiers.set(hit.bit, []);
+        targetTiers.get(hit.bit).push(r);
+      }
+      for (const [bit, rows] of targetTiers) targetTiers.set(bit, norm(rows));
+      out[side] = {
+        hits,
+        junk: Math.max(0, 1 - used),
+        poolSize: pool.rows.length,
+        groups: new Set(pool.rows.map((r) => r.group)).size,
+        junkTiers: norm(junkRows),
+        targetTiers,
+      };
     }
     return out;
   }
@@ -107,6 +139,21 @@
     /* 破裂词缀在整个求解过程中都不会消失（通货移不掉），所以它们不是状态，
      * 而是常量：按侧计数 + 哪些目标位是破裂的（那一位永远不会丢）。 */
     ctx.frac = fracturedInfo(item, list);
+    /* 削切按「最低等级」删词，只看池子分布不够——初始物品上那条目标词缀的实际档位
+     * 往往就是全场最低。这里记下初始词缀的真实 tierIlvl，在「还没动过目标位」的状态里用精确值。
+     * 目标位一旦被删/重加，就退回池子分布（近似）。 */
+    ctx.knownTiers = new Map();
+    ctx.knownJunkMin = { prefix: null, suffix: null };
+    const initJunk = { prefix: [], suffix: [] };
+    for (const a of item.affixes || []) {
+      if (a.fractured) continue;
+      const hit = matchTarget(a.group, a.tierRank, list);
+      if (hit) { ctx.knownTiers.set(hit.bit, a.tierIlvl || 1); continue; }
+      if (initJunk[a.affix]) initJunk[a.affix].push(a.tierIlvl || 1);
+    }
+    for (const side of SIDES) {
+      if (initJunk[side].length) ctx.knownJunkMin[side] = Math.min(...initJunk[side]);
+    }
     ctx.init = abstractState(item, list);
     return ctx;
   }
@@ -313,18 +360,73 @@
     return out;
   }
 
-  /* 削切：真实规则是删「最低等级」的词缀。抽象状态没有等级信息，
-   * 近似为「优先删废词，没有废词再按均匀删」——废词通常就是低档词。 */
-  function whittlingDist(s, ctx) {
-    let removal;
-    const junkTotal = s.junkP + s.junkS;
-    if (junkTotal > 0) {
-      removal = [];
-      if (s.junkP) removal.push({ prob: s.junkP / junkTotal, next: Object.assign({}, s, { junkP: s.junkP - 1 }) });
-      if (s.junkS) removal.push({ prob: s.junkS / junkTotal, next: Object.assign({}, s, { junkS: s.junkS - 1 }) });
-    } else {
-      removal = removeDistOnSide(s, ctx, null);
+  /* 削切删「最低等级」的词缀。抽象状态没有等级，但池子里每类词缀的 tierIlvl 分布是已知的，
+   * 于是用顺序统计量算「某一条最可能是最小值」的概率，而不是粗暴地假设废词一定更低。 */
+  function tailProb(dist, t) {
+    let s = 0;
+    for (const [v, w] of dist) if (v > t) s += w;
+    return s;
+  }
+  function minProb(rep, others) {
+    let p = 0;
+    for (const [t, f] of rep.dist) {
+      let q = f;
+      for (const o of others) q *= tailProb(o.dist, t);
+      p += q;
     }
+    return p;
+  }
+  function whittlingRemovalDist(s, ctx) {
+    const fracMask = (ctx.frac && ctx.frac.mask) || 0;
+    const reps = [];
+    const atInit = s.mask === ctx.init.mask &&
+      s.junkP === ctx.init.junkP && s.junkS === ctx.init.junkS;
+    const junkDist = (side) => {
+      const known = atInit ? ctx.knownJunkMin[side] : null;
+      if (known != null) return [[known, 1]];
+      return ctx.addProbs[side].junkTiers || [];
+    };
+    if (s.junkP) reps.push({ kind: 'junk', side: 'prefix', n: s.junkP, dist: junkDist('prefix') });
+    if (s.junkS) reps.push({ kind: 'junk', side: 'suffix', n: s.junkS, dist: junkDist('suffix') });
+    for (const tg of ctx.list) {
+      if (!(s.mask & tg.bit)) continue;
+      if (fracMask & tg.bit) continue;
+      const known = atInit ? ctx.knownTiers.get(tg.bit) : null;
+      const dist = known != null
+        ? [[known, 1]]
+        : ((ctx.addProbs[tg.side].targetTiers && ctx.addProbs[tg.side].targetTiers.get(tg.bit)) || []);
+      reps.push({ kind: 'target', side: tg.side, n: 1, bit: tg.bit, dist });
+    }
+    const total = reps.reduce((a, r) => a + r.n, 0);
+    if (!total) return [];
+    const usable = reps.every((r) => r.dist && r.dist.length);
+    const out = [];
+    if (!usable) {
+      // 分布缺失（例如目标在池子里没有行）：退回均匀删
+      for (const rm of removeDistOnSide(s, ctx, null)) out.push(rm);
+      return out;
+    }
+    const probs = reps.map((r) => minProb(r, reps.filter((x) => x !== r)));
+    const sum = reps.reduce((a, r, i) => a + r.n * probs[i], 0);
+    for (let i = 0; i < reps.length; i++) {
+      const r = reps[i];
+      const p = sum > 0 ? (r.n * probs[i]) / sum : r.n / total;
+      if (p <= 0) continue;
+      if (r.kind === 'junk') {
+        out.push({
+          prob: p,
+          next: Object.assign({}, s, r.side === 'prefix' ? { junkP: s.junkP - 1 } : { junkS: s.junkS - 1 }),
+        });
+      } else {
+        out.push({ prob: p, next: Object.assign({}, s, { mask: s.mask & ~r.bit }), lost: r.bit });
+      }
+    }
+    return out;
+  }
+
+  function whittlingDist(s, ctx) {
+    let removal = whittlingRemovalDist(s, ctx);
+    if (!removal.length) return [];
     const out = [];
     for (const rm of removal) {
       const open = openSides(rm.next, ctx, rm.next.rarity);
@@ -530,6 +632,9 @@
       return ctx.init.rarity === 'normal' || ctx.init.rarity === 'magic';
     };
     const unreachableTargets = ctx.list.filter((t) => {
+      /* 已经在物品上的目标不算不可达：尤其破裂词缀永远在，
+       * 不能因为「这个档位在这个底子上不会自然出现」就判整件做不了。 */
+      if (ctx.init.mask & t.bit) return false;
       if (essenceReachable(t)) return false;
       const probs = ctx.addProbs[t.side];
       return !probs || !probs.hits.some((h) => h.bit === t.bit);
@@ -810,6 +915,7 @@
     };
     return ctx.list
       .filter((t) => {
+        if (ctx.init.mask & t.bit) return false;
         if (essenceReachable(t)) return false;
         const probs = ctx.addProbs[t.side];
         return !probs || !probs.hits.some((h) => h.bit === t.bit);

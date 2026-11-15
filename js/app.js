@@ -689,16 +689,61 @@
   function renderTargets() {
     $('#target-count').textContent = '已选 ' + state.targets.length + ' 条';
     const el = $('#target-list');
+    /* 破裂底子引导：把锁定的词缀一键设为目标（它不会被通货移走，是天然的起点）。
+     * 注意要在「还没有目标」的分支之前算好——那正是最需要这条提示的时候。 */
+    const fracUnset = (E.fracturedTargets ? E.fracturedTargets(state.item) : [])
+      .filter((f) => !state.targets.some((t) => t.modId === f.modId));
+    const fracBase = E.getBase(state.baseId);
+    const strLocalRank = (f) => {
+      const def = E.getTargetDef(f.modId);
+      const hit = E.baseTierLadder(def, fracBase).find((x) => x.rankGlobal === f.tier);
+      return hit ? ' T' + hit.rankLocal : '';
+    };
+    const fracHint = fracUnset.length
+      ? '<div class="fracture-hint">' +
+        '<span><b>' + fracUnset.length + ' 条破裂词缀已锁定</b>：' +
+        fracUnset.map((f) => esc(f.name) + strLocalRank(f)).join('、') +
+        '，不会被混沌 / 剥离移走。</span>' +
+        '<button class="btn tiny" type="button" data-add-fractured="1">把破裂词缀设为目标</button></div>'
+      : '';
+    const bindFractureHint = () => {
+      const btn = el.querySelector('[data-add-fractured]');
+      if (!btn) return;
+      btn.onclick = () => {
+        if (state.autoRunning) stopAuto('已手动调整目标，连续执行停止。');
+        let added = 0;
+        let skipped = 0;
+        for (const f of fracUnset) {
+          const def = E.getTargetDef(f.modId);
+          if (!def) { skipped += 1; continue; }
+          const sameSide = state.targets.filter((t) => {
+            const d = E.getTargetDef(t.modId);
+            return d && d.affix === def.affix;
+          }).length;
+          if (sameSide >= 3) { skipped += 1; continue; }
+          if (state.targets.some((t) => t.modId === f.modId)) { skipped += 1; continue; }
+          state.targets.push({ modId: f.modId, tier: f.tier });
+          added += 1;
+        }
+        state.routeStats = null;
+        save();
+        renderAll();
+        if (added) toast('已把 ' + added + ' 条破裂词缀设为目标' + (skipped ? '（' + skipped + ' 条跳过：该侧已满）' : ''));
+        else toast('没有可添加的破裂目标（该侧可能已满）', 'error');
+      };
+    };
     if (!state.targets.length) {
-      el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方列表里挑 2–3 条添加。</div>';
+      el.innerHTML = fracHint + '<div class="target-empty">还没有目标词缀。<br>从下方列表里挑 2–3 条添加。</div>';
+      bindFractureHint();
       renderTargetSummary();
       renderRightPanel();
       return;
     }
-    el.innerHTML = state.targets.map((t, i) => {
+    el.innerHTML = fracHint + state.targets.map((t, i) => {
       const def = E.getTargetDef(t.modId);
       if (!def) return '';
       const matched = E.findMatchingAffix(state.item, t);
+      const lockedByFracture = !!(matched && matched.fractured);
       const isBench = D.bench.some((b) => b.id === t.modId);
       const isEssence = !!def.isEssence;
       const chosenTier = !isBench && !isEssence && t.tier ? (def.tiers || []).find((tier) => E.tierRank(def, tier) === Number(t.tier)) : null;
@@ -717,10 +762,12 @@
       return '<div class="target-item ' + (matched ? 'hit' : '') + (unavailable ? ' invalid' : '') + '" data-target-index="' + i + '">' +
         '<span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span>' +
         '<span><span class="target-name" title="' + esc(targetPreview(def, t.tier)) + '">' + esc(def.name) + '</span>' +
-        '<span class="target-sub">' + esc(targetPreview(def, t.tier)) + (unavailable ? ' · 物品等级不足' : '') + '</span></span>' +
+        '<span class="target-sub">' + esc(targetPreview(def, t.tier)) + (unavailable ? ' · 物品等级不足' : '') +
+          (lockedByFracture ? ' · <b class="lock-tag">破裂锁定</b>' : '') + '</span></span>' +
         '<select class="tier-select" data-tier-index="' + i + '" ' + (isBench || isEssence ? 'disabled' : '') + '>' + tierOptions + '</select>' +
         '<button class="remove-btn" data-remove-target="' + i + '" type="button" title="移除目标">×</button></div>';
     }).join('');
+    bindFractureHint();
     $$('#target-list [data-tier-index]').forEach((sel) => {
       sel.onchange = () => {
         if (state.autoRunning) stopAuto('已手动调整目标，连续执行停止。');
@@ -1572,7 +1619,7 @@
           '<span class="action-info"><span class="action-name">' + esc(c.name) + '</span><span class="action-desc">' + esc(reason || c.desc) + '</span></span>' +
           '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
       }).join('') + '</div>';
-    $('#action-body [data-catalyst]').forEach((b) => {
+    $$('#action-body [data-catalyst]').forEach((b) => {
       b.onclick = () => chooseTool({ type: 'catalyst', catalystId: b.dataset.catalyst });
     });
   }
@@ -1786,7 +1833,7 @@
     body.innerHTML = '<div class="awakener-note"><b>重组器 · 简化版</b><p>从目标与祭品的词缀池随机组合，结果最多 6 条；会消耗祭品。当前为简化模拟，不是完整重组概率表。</p></div>' +
       '<div class="donor-chips" style="margin-bottom:8px">' + state.donors.map((d, i) => '<button type="button" class="donor-chip ' + (donor && donor.savedAt === d.savedAt ? 'active' : '') + '" data-recombine-pick="' + i + '">' + esc((E.getBase(d.baseId) || {}).name || d.baseId) + '</button>').join('') + '</div>' +
       (reason ? '<div class="action-none">' + esc(reason) + '</div>' : '<button class="btn gold" type="button" id="btn-recombine">重组 · ' + costText(prices.recombine || 100) + '</button>');
-    $('#action-body [data-recombine-pick]').forEach((b) => {
+    $$('#action-body [data-recombine-pick]').forEach((b) => {
       b.onclick = () => { state.donor = state.donors[Number(b.dataset.recombinePick)] || null; renderActionBody(); };
     });
     const btn = $('#btn-recombine');
@@ -3147,7 +3194,9 @@
         });
       }
     }
-    if (!state.targets.length) {
+    /* 目标为空时才套预设；但物品已经有词缀时不能覆盖——
+     * 玩家可能正好在用「破裂底子 + 还没设目标」的状态，刷新一次就被清空就太伤了。 */
+    if (!state.targets.length && !((state.item && state.item.affixes) || []).length) {
       const p = D.presets[0];
       state.targets = p.targets.map((t) => Object.assign({}, t));
       state.baseId = p.baseId;
