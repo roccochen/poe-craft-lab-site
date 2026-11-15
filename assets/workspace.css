@@ -100,6 +100,19 @@
   .stage { overflow: visible; }
   .right-panel { grid-column: 1 / -1; }
   body { overflow: auto; }
+  /* 右栏铺满整行后，「槽位 … 头盔」这种两端对齐的行会拉出 800px 的空白。
+     改成两列：三行键值对两两并排，卡片、按钮和说明仍然通栏。 */
+  #right-gear {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 22px;
+    align-items: start;
+  }
+  #right-gear > .stage-aside-head,
+  #right-gear > .aside-item-card,
+  #right-gear > .aside-note,
+  #right-gear > .aside-guide,
+  #right-gear > .btn { grid-column: 1 / -1; }
 }
 @media (max-width: 900px) {
   .workspace { display: flex; flex-direction: column; padding: 10px; gap: 10px; }

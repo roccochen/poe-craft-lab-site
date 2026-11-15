@@ -120,6 +120,61 @@
     });
   }
 
+  /* 只加不删的加词缀动作：命中概率可以直接算，不必抽样。
+   * 返回的是两侧按引擎真实落侧规则加权后的结果。 */
+  const EXACT_ADD = { transmute: true, augmentation: true, regal: true, exalted: true };
+
+  /* 精确概率必须在「加这条词缀之前的那一步状态」上算：
+   * 蜕变会把普通变成魔法（普通状态下根本不能加词缀，canAdd 为 false），
+   * 富豪会把魔法升成稀有。直接拿当前物品算，这两类动作会恒等于 0%。 */
+  function preAddState(item, action) {
+    if (action.type === 'transmute') {
+      const c = E.clone(item);
+      c.rarity = 'magic';      // 蜕变结果：1 条词缀的魔法物品
+      c.affixes = [];
+      return c;
+    }
+    if (action.type === 'regal') {
+      const c = E.clone(item);
+      c.rarity = 'rare';       // 富豪结果：保留词缀的稀有物品
+      return c;
+    }
+    return item;
+  }
+
+  /* 值函数求解器（可选依赖）：给出「剩余期望成本 / 完成概率 / 每步的后续期望」。
+   * 求解器不在或求解失败时，全部退回原来的单步统计，不影响可用性。
+   * 界面每次重绘都会叫它，所以按「目标 + 物品词缀 + 价格」缓存；复杂目标（5–6 条）
+   * 会把状态数顶到几百，再按状态数压一下迭代预算，避免一次点击卡一秒。 */
+  const SOLVER_CACHE = new Map();
+  const SOLVER_CACHE_MAX = 40;
+  function solverCacheKey(item, targets, prices) {
+    const tk = (targets || []).map((t) => t.modId + ':' + (t.tier || '')).join(',');
+    const ak = (item.affixes || []).map((a) => (a.group || a.modId) + ':' + (a.tierRank || 0) + ':' + (a.affix || '')[0]).sort().join('|');
+    const pk = prices ? ['transmute', 'augmentation', 'regal', 'alchemy', 'chaos', 'exalted', 'annulment']
+      .map((k) => Math.round(Number(prices[k] || 0) * 100)).join('/') : '';
+    return [item.baseId, item.ilvl, item.rarity, item.corrupted ? 1 : 0, ak, tk, pk].join('#');
+  }
+  function solverPlan(item, targets, prices, opts) {
+    const S = (typeof global !== 'undefined' && global.PoE2Solver) || null;
+    if (!S || typeof S.analyze !== 'function') return null;
+    const key = solverCacheKey(item, targets, prices);
+    if (SOLVER_CACHE.has(key)) return SOLVER_CACHE.get(key);
+    try {
+      const base = { prices, eps: (opts && opts.eps) || 0.02 };
+      // 先小预算试解：状态少再补一次长迭代，状态多就接受未收敛（并标下界）
+      let plan = S.analyze(item, targets || [], Object.assign({ iterations: 400 }, base));
+      if (plan && !plan.converged && !plan.unreachable && plan.states > 0 && plan.states <= 120) {
+        plan = S.analyze(item, targets || [], Object.assign({ iterations: 1500 }, base));
+      }
+      if (SOLVER_CACHE.size >= SOLVER_CACHE_MAX) SOLVER_CACHE.delete(SOLVER_CACHE.keys().next().value);
+      SOLVER_CACHE.set(key, plan);
+      return plan;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function analyze(item, targets, opts) {
     opts = opts || {};
     const prices = opts.prices || {};
@@ -135,22 +190,63 @@
       let complete = 0;
       let regress = 0;
       let valid = 0;
-      for (let i = 0; i < samples; i++) {
-        const rng = E.makeRng((Number(opts.seed) || 1) + actionIndex * 100003 + i * 7919);
-        // 把目标传进引擎：新词缀会优先落在目标还没命中的一侧，和真实做装思路一致。
-        const res = E.applyAction(item, action, { prices, rng, targets: targetIds });
-        if (res.error) continue;
-        valid++;
-        const ev = E.evaluate(res.item, targets);
-        if (ev.complete) complete++;
-        if (ev.matchedCount > baseEval.matchedCount || (ev.complete && !baseEval.complete)) improve++;
-        if (ev.matchedCount < baseEval.matchedCount) regress++;
+      let exact = false;
+      let pImprove = 0;
+      let pComplete = 0;
+      let pRegress = 0;
+
+      if (EXACT_ADD[action.type] && typeof E.exactAddActionOutcome === 'function') {
+        // 精确路径：解析式概率，无抽样噪声
+        const pre = preAddState(item, action);
+        const ex = E.exactAddActionOutcome(pre, targets || [], {});
+        pImprove = ex.pImprove;
+        pComplete = ex.pComplete;
+        pRegress = 0;
+        exact = true;
+      } else if (typeof E.exactActionOutcomes === 'function' &&
+        (action.type === 'annulment' || action.type === 'chaos')) {
+        // 剥离 / 混沌：等概率删一条再（可能）加一条，可以解析展开
+        const exo = E.exactActionOutcomes(item, action, targets || [], {});
+        if (exo) {
+          pImprove = exo.pImprove;
+          pComplete = exo.pComplete;
+          pRegress = exo.pRegress;
+          exact = true;
+        }
+      } else if (action.type === 'alchemy' && typeof global !== 'undefined' &&
+        global.PoE2Solver && typeof global.PoE2Solver.alchemyOutcome === 'function') {
+        // 点金石：清空后连抽 4 条，用求解器的同一套转移做精确展开
+        const al = global.PoE2Solver.alchemyOutcome(item, targets || [], { prices });
+        if (al) {
+          pImprove = al.pImprove;
+          pComplete = al.pComplete;
+          pRegress = al.pRegress;
+          exact = true;
+        }
       }
-      if (!valid) return;
-      const pImprove = improve / valid;
-      const pComplete = complete / valid;
-      const pRegress = regress / valid;
-      const expectedCost = cost / Math.max(0.01, pImprove);
+      if (!exact) {
+        for (let i = 0; i < samples; i++) {
+          const rng = E.makeRng((Number(opts.seed) || 1) + actionIndex * 100003 + i * 7919);
+          // 落侧口径由引擎的 sidePolicy 决定（默认 real = 两侧都可加时 50/50）
+          const res = E.applyAction(item, action, { prices, rng, targets: targetIds });
+          if (res.error) continue;
+          valid++;
+          const ev = E.evaluate(res.item, targets);
+          if (ev.complete) complete++;
+          if (ev.matchedCount > baseEval.matchedCount || (ev.complete && !baseEval.complete)) improve++;
+          if (ev.matchedCount < baseEval.matchedCount) regress++;
+        }
+        if (!valid) return;
+        pImprove = improve / valid;
+        pComplete = complete / valid;
+        pRegress = regress / valid;
+      }
+      if (!exact && !valid) return;
+      // 对目标完全没影响的动作不进推荐（否则会出现一堆 0% 的预兆排在真正有用的通货前面）
+      if (!(pImprove > 5e-4 || pComplete > 5e-4 || pRegress > 5e-4)) return;
+
+      // 只删不补的动作（例如纯剥离）没有「提升概率」，期望花费不该编一个数出来
+      const expectedCost = pImprove > 0 ? cost / pImprove : Infinity;
       const score = pComplete * 120 + pImprove * 45 - pRegress * 35 - expectedCost * 0.015;
       const detail = actionDetail(action);
       recommendations.push({
@@ -163,16 +259,42 @@
         pRegress,
         expectedCost,
         score,
+        exact,
+        samples: exact ? 0 : valid,
         why: [
           '当前目标：' + baseEval.matchedCount + ' / ' + baseEval.targetCount,
           pComplete > 0 ? '这一步有 ' + (pComplete * 100).toFixed(1) + '% 直接完成' : '这一步主要用于提高命中率',
           pRegress > 0 ? '注意：可能会损失已命中词缀' : '不会直接损失目标词缀',
+          exact ? '概率为精确值（按官方权重表解析计算，非抽样）' : '概率为 ' + valid + ' 次模拟估计',
         ],
         steps: [detail],
       });
     });
 
     recommendations.sort((a, b) => b.score - a.score);
+
+    /* 值函数：给每条建议补上「按最优策略走完的期望总花费」并据此重排。
+     * 这一步把顾问从「哪步不亏」升级成「哪条路最便宜」。 */
+    const expected = solverPlan(item, targets, prices, opts);
+    if (expected && expected.alternatives && expected.alternatives.length) {
+      const byType = new Map();
+      for (const a of expected.alternatives) if (!byType.has(a.type)) byType.set(a.type, a);
+      recommendations.forEach((r) => {
+        const a = byType.get(r.action.type);
+        if (a && a.total != null) {
+          r.totalExpected = a.total;
+          r.solverId = a.id;
+          r.branches = a.branches;
+        }
+      });
+      recommendations.sort((a, b) => {
+        const av = a.totalExpected == null ? Infinity : a.totalExpected;
+        const bv = b.totalExpected == null ? Infinity : b.totalExpected;
+        if (av !== bv) return av - bv;
+        return b.score - a.score;
+      });
+    }
+
     const top = recommendations.slice(0, 3);
     const ev = baseEval;
     let diagnosis;
@@ -203,7 +325,27 @@
         finish: '目标齐全后用神圣石调整数值。',
       };
     }
-    return { eval: ev, recommendations: top, plan, diagnosis };
+    return {
+      eval: ev,
+      recommendations: top,
+      plan,
+      diagnosis,
+      expected: expected ? {
+        etc: expected.etc,
+        pSuccess: expected.pSuccess,
+        best: expected.best,
+        alternatives: (expected.alternatives || []).slice(0, 4),
+        states: expected.states,
+        converged: expected.converged,
+        lowerBound: expected.lowerBound || false,
+        budget: expected.budget || null,
+        unreachable: expected.unreachable,
+        unreachableReason: expected.unreachableReason || null,
+        unreachableTargets: expected.unreachableTargets || [],
+        matched: expected.matched,
+        targetCount: expected.targetCount,
+      } : null,
+    };
   }
 
   function chooseRouteAction(item, ev, rng, budget, spent, targets) {

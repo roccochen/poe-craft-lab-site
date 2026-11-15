@@ -242,8 +242,72 @@
   function eligibleTiers(mod, ilvl) {
     return mod.tiers.filter((t) => t.ilvl <= ilvl);
   }
-  function pickTier(rng, mod, tiers) {
-    return weightedPick(rng, tiers, (t) => Math.pow(tierRank(mod, t), 1.35));
+
+  /* ---------- 逐档权重（官方数据） ----------
+   * Mods 表里每一行 = 一个档位，每行自带 SpawnWeight_Tags / SpawnWeight_Values。
+   * 导入器把这些标签集合去重成 weightSets，tier.w 就是下标；w = -1 表示该档没有任何正权重。
+   * 实测 0.9.x 全表 4,273 个正权重条目全部等于 1，所以档内是等概率的，
+   * 档位稀有度只来自 Level（物品等级门槛）。旧的 pow(tierRank, 1.35) 是编出来的分布。 */
+  function maxWeightForSet(set, base) {
+    if (!set) return 0;
+    let best = 0;
+    for (const t of baseTags(base)) {
+      const w = set[t];
+      if (typeof w === 'number' && w > best) best = w;
+    }
+    return best;
+  }
+  function tierWeightFor(mod, tier, base) {
+    const idx = tier && tier.w;
+    const sets = D.weightSets;
+    if (typeof idx === 'number' && idx >= 0 && sets && sets[idx]) return maxWeightForSet(sets[idx], base);
+    // 没有逐档数据（深渊 / 腐化词缀的部位标签是导入器推断的）→ 退回组级判据
+    const gw = weightFor(mod, base);
+    return gw == null ? 0 : gw;
+  }
+  /* 这一组在给定物品等级 + 底子上真正能掉出来的档位。
+   * 与 eligibleTiers 的差别：逐档判定部位可用性，不再整组一刀切。 */
+  function eligibleTiersFor(mod, ilvl, base) {
+    return (mod.tiers || []).filter((t) => t.ilvl <= ilvl && tierWeightFor(mod, t, base) > 0);
+  }
+  function pickTier(rng, mod, tiers, base) {
+    if (!tiers || !tiers.length) return null;
+    if (!base) return tiers[Math.min(tiers.length - 1, Math.floor(rand(rng) * tiers.length))];
+    return weightedPick(rng, tiers, (t) => tierWeightFor(mod, t, base)) || tiers[tiers.length - 1];
+  }
+
+  /* 档位阶梯：同一组词缀在不同底子上能掉的档并不一样。
+   * 例：+最大生命的 T1–T4 只掉在胸甲上，头盔最高只有全组的 T5。
+   * 玩家在游戏里看到的 "T1" 永远是「这个部位能出的最好一档」，
+   * 所以对外展示一律用 rankLocal，内部存储仍用 rankGlobal（保持存档兼容）。 */
+  function baseTierLadder(mod, base) {
+    if (!mod || !mod.tiers) return [];
+    const eligible = mod.tiers.filter((t) => tierWeightFor(mod, t, base) > 0);
+    const n = eligible.length;
+    return eligible.map((t, i) => ({
+      tier: t,
+      ilvl: t.ilvl,
+      rankGlobal: mod.tiers.length - mod.tiers.indexOf(t),
+      rankLocal: n - i,
+    }));
+  }
+  function tierRankForBase(mod, tier, base) {
+    if (!mod || !tier) return null;
+    const hit = baseTierLadder(mod, base).find((x) => x.tier === tier);
+    return hit ? hit.rankLocal : null;
+  }
+  /* 已生成词缀 → 该底子上的本地档位（展示用）。
+   * 工艺 / 精华等没有自然品级的词缀返回 null，交给调用方回退。 */
+  function affixTierForBase(affix, base) {
+    if (!affix || !base) return null;
+    const mod = modById[affix.modId];
+    if (!mod || !mod.tiers) return null;
+    const idx = mod.tiers.length - Number(affix.tierRank);
+    const tier = mod.tiers[idx];
+    if (!tier) return null;
+    const local = tierRankForBase(mod, tier, base);
+    if (local == null) return null;
+    return { local, global: Number(affix.tierRank) };
   }
   function existingGroups(item, ignoreUid) {
     const set = {};
@@ -295,7 +359,7 @@
       if (groups[mod.group]) continue;
       if (!modEligibleOnBase(mod, base, item)) continue;
       if (opts.onlyTag && mod.tags.indexOf(opts.onlyTag) === -1) continue;
-      const tiers = eligibleTiers(mod, item.ilvl);
+      const tiers = eligibleTiersFor(mod, item.ilvl, base);
       if (!tiers.length) continue;
       // 优先官方权重；没有官方数据才退回估算值
       const official = weightFor(mod, base);
@@ -308,6 +372,225 @@
       if (opts.tag && mod.tags.indexOf(opts.tag) !== -1) w *= 8;
       if (w <= 0) continue;
       out.push({ mod, tiers, weight: w });
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 精确概率（解析式，不抽样）
+   * ------------------------------------------------------------------ *
+   * addRandomAffix 是「抽一次 → 返回一条词缀」，要给出可信的百分比，
+   * 需要的是完整分布：这一侧所有可能出现的 (组, 档) 及各自概率。
+   *
+   * 官方权重表的模型是「把所有可掉的行平铺，按权重抽一行」，
+   * 一行 = 一个组的某一个档。所以：
+   *     P(组 G, 档 i) = w(G) × w(i) / Σ
+   * 当前数据里 w ≡ 1，于是整池等概率平铺——
+   * 这也解释了为什么「可掉档位更多」的词缀组会更常见。
+   */
+  /* 把一侧的可能结果摊平成 (组, 档) 行列表——这才是官方权重表的真实模型：
+   * 所有可掉行平铺在一条池子里，按权重抽一行。
+   * 随机抽样和精确概率共用这一份枚举，两边永远不会走偏。
+   */
+  function addPoolRows(item, side, opts) {
+    const base = getBase(item.baseId);
+    const rows = [];
+    let total = 0;
+    for (const entry of candidatesFor(item, side, opts || {})) {
+      for (const tier of entry.tiers) {
+        const tw = tierWeightFor(entry.mod, tier, base);
+        if (tw <= 0) continue;
+        const w = entry.weight * tw;
+        if (w <= 0) continue;
+        rows.push({ mod: entry.mod, tier, weight: w });
+        total += w;
+      }
+    }
+    return { rows, total, base };
+  }
+  function pickAddRow(rng, item, side, opts) {
+    const { rows, total } = addPoolRows(item, side, opts);
+    if (!total) return null;
+    let r = rand(rng) * total;
+    for (const row of rows) {
+      r -= row.weight;
+      if (r <= 0) return row;
+    }
+    return rows[rows.length - 1];
+  }
+
+  function exactAddPool(item, side, opts) {
+    const { rows: poolRows, total } = addPoolRows(item, side, opts || {});
+    const rows = [];
+    for (const r of poolRows) {
+      rows.push({
+        modId: r.mod.id,
+        group: r.mod.group || r.mod.id,
+        affix: r.mod.affix,
+        name: r.mod.name,
+        tierRank: tierRank(r.mod, r.tier),
+        tierIlvl: r.tier.ilvl,
+        weight: r.weight,
+      });
+    }
+    if (!total) return { side, total: 0, rows: [], groups: [] };
+    const byGroup = new Map();
+    for (const r of rows) {
+      r.prob = r.weight / total;
+      const g = byGroup.get(r.modId) || {
+        modId: r.modId, group: r.group, affix: r.affix, name: r.name,
+        prob: 0, tiers: 0, bestTierRank: Infinity, bestTierIlvl: 0,
+      };
+      g.prob += r.prob;
+      g.tiers++;
+      if (r.tierRank < g.bestTierRank) { g.bestTierRank = r.tierRank; g.bestTierIlvl = r.tierIlvl; }
+      byGroup.set(r.modId, g);
+    }
+    return {
+      side,
+      total,
+      rows,
+      groups: [...byGroup.values()].sort((a, b) => b.prob - a.prob),
+    };
+  }
+
+  /* 一次「加词缀」动作命中目标的精确概率（不抽样）。
+   * targets: [{ modId, tier }]，tier 是档位上限（1 = 最好）。
+   *   pImprove  新词缀命中任意一条还没达成的目标
+   *   pComplete 加上这条之后目标全部达成
+   */
+  function exactAddOutcome(item, side, targets, opts) {
+    const pool = exactAddPool(item, side, opts);
+    const ev = evaluate(item, targets || []);
+    const out = { side, pImprove: 0, pComplete: 0, hit: [], complete: ev.complete, total: pool.total };
+    if (!pool.total) return out;
+    const missing = ev.missing.map((t) => {
+      const def = getTargetDef(t.modId);
+      return { group: def ? targetGroup(def) : null, tier: t.tier ? Number(t.tier) : null };
+    }).filter((m) => m.group);
+    for (const g of pool.groups) {
+      const want = missing.find((m) => m.group === g.group);
+      if (!want) continue;
+      // 档位门槛：目标要求 T(n) 或更好 → tierRank ≤ n
+      let p = g.prob;
+      if (want.tier) {
+        p = pool.rows
+          .filter((r) => r.group === g.group && r.tierRank <= want.tier)
+          .reduce((s, r) => s + r.prob, 0);
+      }
+      if (p <= 0) continue;
+      out.pImprove += p;
+      out.hit.push({ modId: g.modId, group: g.group, name: g.name, prob: p });
+      if (missing.length === 1) out.pComplete += p;
+    }
+    if (missing.length === 1) out.pImprove = Math.min(1, out.pImprove);
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 移除 / 替换类动作的精确结果分布
+   * ------------------------------------------------------------------ *
+   * 剥离 = 在非破裂词缀里等概率选一条删掉；
+   * 混沌 = 同样等概率删一条，然后（若还有空位）按落侧策略再加一条。
+   * 两者都能解析算清楚：把「最终命中数」当成状态，逐个受害者展开。
+   * 返回 pImprove / pRegress / pComplete 以及最终命中数的分布。
+   * 带预兆时规则会变（定向删除 / 一次删两条），交给蒙特卡洛。
+   */
+  function hasArmedOmenFor(item, currency) {
+    return armedOmens(item).some((o) => o.appliesTo === currency);
+  }
+  function withoutAffix(item, affix) {
+    const next = clone(item);
+    next.affixes = next.affixes.filter((a) => a.uid !== affix.uid);
+    return next;
+  }
+  function exactActionOutcomes(item, action, targets, opts) {
+    targets = targets || [];
+    const type = action && action.type;
+    if (type !== 'annulment' && type !== 'chaos') return null;
+    if (type === 'chaos' && item.rarity !== 'rare') return null;
+    if (hasArmedOmenFor(item, type)) return null;
+    const ev = evaluate(item, targets);
+    const K = targets.length;
+    const removable = item.affixes.filter((a) => !a.fractured);
+    if (!removable.length) return null;
+    const dist = new Map();
+    const bump = (m, p) => { if (p > 0) dist.set(m, (dist.get(m) || 0) + p); };
+    const n = removable.length;
+    for (const victim of removable) {
+      const post = withoutAffix(item, victim);
+      const pe = evaluate(post, targets);
+      const pv = 1 / n;
+      if (type === 'annulment') { bump(pe.matchedCount, pv); continue; }
+      const open = ['prefix', 'suffix'].filter((s) => canAdd(post, s));
+      if (!open.length) { bump(pe.matchedCount, pv); continue; }
+      const sp = sideProbabilities(post, targets.map((t) => t.modId));
+      let pGain = 0;
+      for (const side of open) {
+        const w = sp[side] || 0;
+        if (w <= 0) continue;
+        pGain += w * exactAddOutcome(post, side, targets, opts).pImprove;
+      }
+      bump(pe.matchedCount, pv * (1 - pGain));
+      bump(pe.matchedCount + 1, pv * pGain);
+    }
+    let pImprove = 0;
+    let pRegress = 0;
+    let pComplete = 0;
+    for (const [m, p] of dist) {
+      if (m > ev.matchedCount) pImprove += p;
+      if (m < ev.matchedCount) pRegress += p;
+      if (K > 0 && m === K) pComplete += p;
+    }
+    return {
+      exact: true,
+      type,
+      pImprove,
+      pComplete,
+      pRegress,
+      baseMatched: ev.matchedCount,
+      targetCount: K,
+      dist: [...dist].sort((a, b) => a[0] - b[0]).map(([matched, prob]) => ({ matched, prob })),
+    };
+  }
+
+  /* 加词缀类动作会落在哪一侧：复现 chooseSide 的判定，返回概率而不是抽样。
+   * 与 chooseSide 的唯一区别是平局时给 50/50 而不是掷骰。 */
+  function sideProbabilities(item, targetIds) {
+    const open = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
+    const res = { prefix: 0, suffix: 0, determined: true };
+    if (!open.length) return res;
+    if (open.length === 1) { res[open[0]] = 1; return res; }
+    if (sidePolicy === 'real') { res.prefix = 0.5; res.suffix = 0.5; res.determined = false; return res; }
+    const fake = Object.assign({}, item, { targets: targetIds || item.targets });
+    const pNeed = sideNeeded(fake, 'prefix');
+    const sNeed = sideNeeded(fake, 'suffix');
+    const pick = (side) => { res[side] = 1; return res; };
+    if (pNeed != null && sNeed != null && pNeed !== sNeed) return pick(pNeed > sNeed ? 'prefix' : 'suffix');
+    if (pNeed != null && sNeed == null) return pick(pNeed > 0 ? 'prefix' : 'suffix');
+    if (sNeed != null && pNeed == null) return pick(sNeed > 0 ? 'suffix' : 'prefix');
+    const p = sides(fake, 'prefix').length;
+    const s = sides(fake, 'suffix').length;
+    if (p < s) return pick('prefix');
+    if (s < p) return pick('suffix');
+    res.prefix = 0.5;
+    res.suffix = 0.5;
+    res.determined = false;
+    return res;
+  }
+
+  /* 「加一条词缀」类动作的精确命中概率，两侧按 sideProbabilities 加权。
+   * 用于崇高 / 增幅 / 蜕变 / 富豪这类只加不删的动作。 */
+  function exactAddActionOutcome(item, targets, opts) {
+    const sp = sideProbabilities(item, (targets || []).map((t) => t.modId));
+    const out = { pImprove: 0, pComplete: 0, sides: {}, determinedSide: !!sp.determined };
+    for (const side of ['prefix', 'suffix']) {
+      const p = sp[side] || 0;
+      if (!p) continue;
+      const o = exactAddOutcome(item, side, targets || [], opts);
+      out.sides[side] = Object.assign({ sideProb: p }, o);
+      out.pImprove += p * o.pImprove;
+      out.pComplete += p * o.pComplete;
     }
     return out;
   }
@@ -377,12 +660,10 @@
 
   function addRandomAffix(item, side, rng, opts) {
     if (!canAdd(item, side)) return null;
-    const pool = candidatesFor(item, side, opts || {});
-    if (!pool.length) return null;
-    const choice = weightedPick(rng, pool, (x) => x.weight);
-    if (!choice) return null;
-    const tier = pickTier(rng, choice.mod, choice.tiers);
-    const aff = makeAffix(choice.mod, tier, rng);
+    // 平铺抽一行（组 × 档），与 exactAddPool 共用同一份枚举
+    const row = pickAddRow(rng, item, side, opts || {});
+    if (!row) return null;
+    const aff = makeAffix(row.mod, row.tier, rng);
     item.affixes.push(aff);
     return aff;
   }
@@ -406,10 +687,27 @@
     if (!open && !closed) return null;
     return open > 0 ? 1 - closed / (open + closed) : 0;
   }
+  /* ------------------------------------------------------------------ *
+   * 落侧策略
+   * ------------------------------------------------------------------ *
+   * 加词缀类通货要先决定落在前缀还是后缀。
+   *   real   ：真实游戏行为——两侧都还有空位时 50/50
+   *   assist ：辅助模式——优先补「目标还没命中」的那一侧，避免做出 3前0后
+   * real 是默认值。assist 会让单侧目标的命中概率偏高（约 2 倍），
+   * 界面上把两种口径都标出来，由玩家自己选。
+   */
+  let sidePolicy = 'real';
+  function setSidePolicy(p) {
+    sidePolicy = p === 'assist' ? 'assist' : 'real';
+    return sidePolicy;
+  }
+  function getSidePolicy() { return sidePolicy; }
+
   function chooseSide(item, rng) {
     const opts = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
     if (!opts.length) return null;
     if (opts.length === 1) return opts[0];
+    if (sidePolicy === 'real') return rand(rng) < 0.5 ? opts[0] : opts[1];
     const p = sides(item, 'prefix').length;
     const s = sides(item, 'suffix').length;
     const pNeed = sideNeeded(item, 'prefix');
@@ -437,11 +735,10 @@
         const victim = replaceable[randInt(rng, 0, replaceable.length - 1)];
         const side = victim.affix;
         item.affixes = item.affixes.filter((a) => a !== victim);
-        const pool = candidatesFor(item, side, Object.assign({}, opts, { tag: opts.guaranteeTag }));
-        if (pool.length) {
-          const choice = weightedPick(rng, pool, (x) => x.weight);
-          const tier = pickTier(rng, choice.mod, choice.tiers);
-          item.affixes.push(makeAffix(choice.mod, tier, rng));
+        const poolRows = addPoolRows(item, side, Object.assign({}, opts, { tag: opts.guaranteeTag }));
+        if (poolRows.total) {
+          const row = pickAddRow(rng, item, side, Object.assign({}, opts, { tag: opts.guaranteeTag }));
+          item.affixes.push(makeAffix(row.mod, row.tier, rng));
         } else {
           item.affixes.push(victim);
         }
@@ -799,9 +1096,10 @@
           const mods = group ? (D.mods || []).filter((mm) => mm.group === group && mm.kind === 'standard') : [];
           if (mods.length) {
             const mod = mods[randInt(rng, 0, mods.length - 1)];
-            const tiers = eligibleTiers(mod, next.ilvl);
+            const modBase = getBase(next.baseId);
+            const tiers = eligibleTiersFor(mod, next.ilvl, modBase);
             if (tiers.length) {
-              const aff = makeAffix(mod, pickTier(rng, mod, tiers), rng);
+              const aff = makeAffix(mod, pickTier(rng, mod, tiers, modBase), rng);
               if (aff) {
                 next.affixes.push(aff);
                 message = '使用崇高石（预兆：' + exOmen.name + '）：新增同组词缀「' + aff.text.split('\n')[0] + '」。';
@@ -993,7 +1291,14 @@
       case 'desecrate_pick': {
         const choice = action.choice;
         if (!choice || !choice.modId) return fail('没有选择深渊词缀');
-        if (!canAdd(next, choice.affix)) return fail('该侧词缀已满');
+        // 该侧已满时，先挤掉一条同侧词缀再加入——深渊词缀是可替换的，
+        // 直接报错会让「1 前 3 后」这类物品永远用不了亵渎。
+        if (!canAdd(next, choice.affix)) {
+          const sameSide = next.affixes.filter((a) => !a.fractured && a.affix === choice.affix);
+          if (!sameSide.length) return fail('该侧词缀已满');
+          const victim = sameSide[randInt(rng, 0, sameSide.length - 1)];
+          next.affixes = next.affixes.filter((a) => a !== victim);
+        }
         const res = applyDesecratedPick(next, choice);
         if (res.error) return fail(res.error);
         next.affixes = res.item.affixes;
@@ -1324,7 +1629,10 @@
     while (out.length < n && pool.length) {
       const idx = randInt(rng, 0, pool.length - 1);
       const mod = pool.splice(idx, 1)[0];
-      const tier = pickTier(rng, mod, mod.tiers);
+      // 深渊词缀同样受物品等级门槛约束：低等级物品不该翻出满级深渊档
+      const desBase = getBase(item.baseId);
+      const desTiers = eligibleTiersFor(mod, item.ilvl, desBase);
+      const tier = pickTier(rng, mod, desTiers.length ? desTiers : mod.tiers, desBase);
       const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
       out.push({
         modId: mod.id,
@@ -1596,7 +1904,10 @@
   const api = {
     makeRng, rand, randInt, randFloat, weightedPick, clone,
     getBase, createItem, modEligibleOnBase, targetEligibleOnBase, tierRank, tierLabel,
-    eligibleTiers, candidatesFor, addRandomAffix, applyAction, actionCost, mergePrices,
+    eligibleTiers, eligibleTiersFor, tierWeightFor, baseTierLadder, tierRankForBase, affixTierForBase,
+    candidatesFor, addRandomAffix,
+    exactAddPool, exactAddOutcome, exactAddActionOutcome, exactActionOutcomes, sideProbabilities,
+    setSidePolicy, getSidePolicy, applyAction, actionCost, mergePrices,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
@@ -1604,6 +1915,20 @@
     actionAvailability, omenAvailability, essenceAvailability, essenceDescForItem, syncMetaFlags,
     corruptionCandidates, desecratedCandidates, baseTags, weightFor, desecrateAvailability, desecrateChoices, runeDef, runeValues, runeText, runeStatText, runeEffectFor, runeEligibleOnBase, runeAvailability, clearSocketsAvailability, canSocket, normalizeItem,
   };
+
+  /* 词缀 / 精华数据在浏览器里是按需注入的（js/data-poe2.js 的 installHeavyData）。
+   * 数据到齐后调这个把索引补齐：原地清空再填，外部已经拿到的 modById / targetById
+   * 引用继续有效，不用重新取。 */
+  function installData() {
+    for (const k of Object.keys(modById)) delete modById[k];
+    for (const k of Object.keys(essenceById)) delete essenceById[k];
+    D.mods.forEach((m) => { modById[m.id] = m; });
+    D.essences.forEach((e) => { essenceById[e.id] = e; });
+    for (const k of Object.keys(targetById)) delete targetById[k];
+    Object.assign(targetById, modById, benchById);
+    return { mods: D.mods.length, essences: D.essences.length };
+  }
+  api.installData = installData;
 
   global.PoE2Engine = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -274,6 +274,13 @@ h1, h2, h3, p { margin: 0; }
 
 /* ------------------------------------------------------------------ fields */
 .field { position: relative; }
+.field-label {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+}
 .search-field { margin-bottom: 9px; }
 .search-field.compact { margin-bottom: 7px; }
 .search-field input {
@@ -296,7 +303,16 @@ h1, h2, h3, p { margin: 0; }
 }
 
 /* ------------------------------------------------------------------ base list */
-.base-list { display: flex; flex-direction: column; gap: 5px; max-height: 296px; overflow-y: auto; padding-right: 2px; }
+/* 分页由 app.js 控制（一次 12 个，点「显示更多」加 12 个）：
+   列表本身不再自带滚动条，避免页里套滚动、在手机上吃掉滑动手势。 */
+.base-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 6px;
+  padding-right: 3px;
+}
+.base-more { grid-column: 1 / -1; margin-top: 3px; }
 .base-card {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -1043,7 +1059,9 @@ h1, h2, h3, p { margin: 0; }
 }
 @media (max-width: 1180px) {
   .layout { grid-template-columns: 300px minmax(0, 1fr); height: auto; }
-  .right-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+  /* 只给旧的 .layout 用；工作台（.workspace + #step-finish）不能吃 align-items: start，
+     否则右栏子块缩到内容宽（实测 336px / 992px），旁边整片空着 */
+  .layout .right-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
   .advisor-head, .diagnosis, .progress-card { grid-column: 1 / -1; }
   .advisor-section { min-width: 0; }
   .advisor-foot { grid-column: 1 / -1; }
@@ -1059,16 +1077,40 @@ h1, h2, h3, p { margin: 0; }
   .topbar-meta { display: none; }
   .top-actions { margin-left: 0; width: 100%; flex-wrap: wrap; }
   .layout { display: flex; flex-direction: column; padding: 10px; }
-  .left-panel, .center, .right-panel { width: 100%; }
-  .right-panel { display: flex; }
+  .left-panel, .center { width: 100%; }
+  .layout .right-panel { width: 100%; display: flex; }
   .action-grid, .essence-grid, .lock-grid { grid-template-columns: 1fr; }
   .preset-list { grid-template-columns: 1fr; }
   .item-toolbar { align-items: flex-start; }
   .item-toolbar .toolbar-actions { width: 100%; }
   .item-stats { grid-template-columns: repeat(2, 1fr); }
-  .slot-tabs { grid-template-columns: repeat(5, 1fr); }
+  .slot-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .base-list { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .cost-grid, .read-grid { grid-template-columns: 1fr; }
+}
+
+/* 跳过导航：键盘用户第一个 Tab 站点 */
+.skip-link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 99;
+  /* 藏起来用位移，不用 left:-9999px：那样会被判成横向溢出 */
+  transform: translateY(-140%);
+  padding: 11px 18px;
+  border: 1px solid var(--gold-dim);
+  border-radius: 0 0 9px 0;
+  background: var(--panel-3);
+  color: var(--gold-2);
+  font-size: 12px;
+  text-decoration: none;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

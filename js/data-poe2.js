@@ -23,7 +23,10 @@
   const ZH_BASES = (typeof window !== 'undefined' && window.POE2_ZH_BASES && window.POE2_ZH_BASES.names) || {};
   /* 官方来源优先：本地游戏导出的 dat 数据存在时用它替换 wiki 数据 */
   const DAT_BASES = (typeof window !== 'undefined' && window.POE2_DAT_BASES && window.POE2_DAT_BASES.bases) || null;
-  const DAT_MODS = (typeof window !== 'undefined' && window.POE2_DAT_MODS && window.POE2_DAT_MODS.mods) || null;
+  /* 词缀 / 逐档权重 / 灵魂核心三份 dat 数据（约 640 KiB 源码）目前仍由 index.html
+   * 的 <script> 同步加载，到齐后由文件末尾的 installHeavyData() 装配一次。
+   * 装配被写成可重入的函数，是为了以后能改成按需注入：把 index.html 里那两个
+   * <script> 摘掉、在需要时注入并再调一次 installHeavyData() 即可，其余代码不用动。 */
   const baseSource = DAT_BASES || CRAFTABLE;
   const bases = baseSource.filter((b) => b.slot !== 'charm').map((b) => ({
     nameZh: ZH_BASES[b.name] || b.nameZh || null,
@@ -38,7 +41,11 @@
     weapon: b.weapon || undefined,
     implicit: b.implicit || '',
   }));
-  const baseDataMeta = GENERATED_BASES ? {
+  const baseDataMeta = (DAT_BASES) ? {
+    source: 'local-game-files',
+    license: '游戏数据 (c) Grinding Gear Games；本地导出，不再分发',
+    stats: DAT_BASES.stats || { total: (DAT_BASES || []).length },
+  } : GENERATED_BASES ? {
     source: GENERATED_BASES.source,
     license: GENERATED_BASES.license,
     fetchedAt: GENERATED_BASES.fetchedAt,
@@ -63,33 +70,65 @@
   /* 官方 dat 只覆盖普通词缀；深渊 / 腐化词缀暂用 wiki 版补充，
    * 待导入器支持这两类后一并替换 */
   // 0.7.0 起普通 / 深渊 / 腐化词缀全部来自导入器，不再混入 wiki 数据
-  const mods = (DAT_MODS || [])
-    .filter((m) => (m.slots || []).indexOf('charm') === -1 && hasItemWeight(m))
-    .map((m) => ({
-    id: m.id,
-    name: m.name,
-    nameEn: m.nameEn,
-    group: m.group,
-    affix: m.affix,
-    kind: m.kind || 'standard',
-    tags: m.tags || [],
-    slots: m.slots || [],
-    attrs: m.attrs || [],
-    attrSets: m.attrSets || [],
-    weapons: m.weapons || [],
-    spawnWeights: m.spawnWeights || null,
-    weight: m.weight == null ? 1000 : m.weight,
-    weightSource: m.weightSource || 'approx',
-    text: m.text,
-    tiers: (m.tiers || []).map((t) => ({ ilvl: t.ilvl, v: t.v, text: t.text, textZh: t.textZh || null, name: t.name })),
-  }));
-  const modDataMeta = GENERATED ? {
-    source: GENERATED.source,
-    license: GENERATED.license,
-    fetchedAt: GENERATED.fetchedAt,
-    builtAt: GENERATED.builtAt,
-    stats: GENERATED.stats,
-  } : { source: 'missing', stats: { total: 0 } };
+  /* 装配结果：数据未到齐时是空数组，installHeavyData() 到了再填。 */
+  let mods = [];
+  let modDataMeta = { source: 'missing', stats: { total: 0 } };
+  function buildMods() {
+    /* 两种来源：
+     *  · 整表 window.POE2_DAT_MODS（data-poe2.dat-mods.js，Node 测试用，页面不加载）；
+     *  · 浏览器里是「共享核心 + 已加载的槽位切片」：核心给 weightSets/stats，
+     *    每个槽位文件挂进 window.POE2_DAT_MODS_SLOTS[slot]，切一个装一个（见 app.js）。
+     *    多个槽位同时加载时按 id 去重合并，结果只会是整表的子集。 */
+    const MASTER = (typeof window !== 'undefined' && window.POE2_DAT_MODS) || null;
+    const CORE = (typeof window !== 'undefined' && window.POE2_DAT_MODS_CORE) || null;
+    const SLOTMAP = (typeof window !== 'undefined' && window.POE2_DAT_MODS_SLOTS) || null;
+    let DAT_MODS = (MASTER && MASTER.mods) || null;
+    if (!DAT_MODS && SLOTMAP) {
+      const merged = new Map();
+      for (const key of Object.keys(SLOTMAP)) {
+        for (const m of SLOTMAP[key] || []) merged.set(m.id, m);
+      }
+      DAT_MODS = [...merged.values()];
+    }
+    const DAT_TIER_WEIGHT_SETS = (MASTER && MASTER.weightSets) || (CORE && CORE.weightSets) || null;
+    const DAT_TIER_META = (MASTER && MASTER.stats) || (CORE && CORE.stats) || null;
+    if (!DAT_MODS) return { weightSets: null, meta: null };
+    mods = DAT_MODS
+      .filter((m) => (m.slots || []).indexOf('charm') === -1 && hasItemWeight(m))
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        nameEn: m.nameEn,
+        group: m.group,
+        affix: m.affix,
+        kind: m.kind || 'standard',
+        tags: m.tags || [],
+        slots: m.slots || [],
+        attrs: m.attrs || [],
+        attrSets: m.attrSets || [],
+        weapons: m.weapons || [],
+        spawnWeights: m.spawnWeights || null,
+        weight: m.weight == null ? 1000 : m.weight,
+        weightSource: m.weightSource || 'approx',
+        text: m.text,
+        tiers: (m.tiers || []).map((t) => ({ ilvl: t.ilvl, v: t.v, text: t.text, textZh: t.textZh || null, name: t.name, w: t.w == null ? null : t.w })),
+      }));
+    /* 运行时实际用的数据源要如实上报：本地游戏文件导出时，modDataMeta 不再指向 wiki。
+     * 面板上的「来源 / 许可」「权重可信度」都读这里，别再写死 CC BY-NC-SA。 */
+    modDataMeta = (DAT_MODS && DAT_TIER_META) ? {
+      source: 'local-game-files',
+      license: '游戏数据 (c) Grinding Gear Games；本地导出，不再分发',
+      gameVersion: DAT_TIER_META.gameVersion || null,
+      stats: DAT_TIER_META,
+    } : GENERATED ? {
+      source: GENERATED.source,
+      license: GENERATED.license,
+      fetchedAt: GENERATED.fetchedAt,
+      builtAt: GENERATED.builtAt,
+      stats: GENERATED.stats,
+    } : { source: 'missing', stats: { total: 0 } };
+    return { weightSets: DAT_TIER_WEIGHT_SETS || null, meta: DAT_TIER_META || null };
+  }
 
   /* 精华：数值为整理版近似，但 group / 文本与正式词缀数据保持一致，
    * 这样冲突判定、目标匹配、派生属性统计都走同一套组名与文本解析。 */
@@ -105,42 +144,47 @@
     the_infinite: '无限', the_mind: '心灵',
   };
   /* 精华效果文本 → 官方前后缀：同模板词缀的 affix 来自 wiki 的 Prefixes/Suffixes 分节。
-   * 有唯一官方结论就用它，覆盖提交数据里按语义推断的结果。 */
+   * 有唯一官方结论就用它，覆盖提交数据里按语义推断的结果。
+   * 这张表依赖词缀数据，所以跟精华一起在 installHeavyData() 里重建。 */
   const TEXT_AFFIX = new Map();
-  mods.forEach((m) => {
-    (m.tiers || []).forEach((t) => {
-      if (!t || !t.text) return;
-      const cur = TEXT_AFFIX.get(t.text);
-      if (!cur) TEXT_AFFIX.set(t.text, m.affix);
-      else if (cur !== m.affix) TEXT_AFFIX.set(t.text, 'conflict');
-    });
-  });
   const DAT_ESSENCES = (typeof window !== 'undefined' && window.POE2_DAT_ESSENCES && window.POE2_DAT_ESSENCES.essences) || null;
   const ESS_SRC = DAT_ESSENCES || (GEN_ESSENCES && GEN_ESSENCES.essences) || [];
-  const essences = ESS_SRC.map((e) => ({
-    id: e.id,
-    name: ESSENCE_ZH[e.typeId] || e.name || e.type,
-    fullName: (ESSENCE_ZH[e.typeId] || e.type) + '精华',
-    typeId: e.typeId,
-    tier: e.tier,
-    tierName: e.tierName,
-    perfect: !!e.perfect,
-    cost: e.cost,
-    rule: e.rule,
-    effects: (e.effects || []).map((eff) => {
-      const official = TEXT_AFFIX.get(eff.text);
-      const affix = official && official !== 'conflict' ? official : eff.affix;
-      return {
-        slots: eff.slots || [],
-        weapons: eff.weapons || [],
-        text: eff.text,
-        v: eff.v,
-        affix,
-        affixSource: official && official !== 'conflict' ? 'official' : 'inferred',
-      };
-    }),
-    color: ['#8fa3c8', '#9db8e8', '#e6cf9a', '#d8b4e2'][Math.min(3, Math.max(0, (e.tier || 1) - 1))],
-  }));
+  let essences = [];
+  function buildEssences() {
+    TEXT_AFFIX.clear();
+    mods.forEach((m) => {
+      (m.tiers || []).forEach((t) => {
+        if (!t || !t.text) return;
+        const cur = TEXT_AFFIX.get(t.text);
+        if (!cur) TEXT_AFFIX.set(t.text, m.affix);
+        else if (cur !== m.affix) TEXT_AFFIX.set(t.text, 'conflict');
+      });
+    });
+    essences = ESS_SRC.map((e) => ({
+      id: e.id,
+      name: ESSENCE_ZH[e.typeId] || e.name || e.type,
+      fullName: (ESSENCE_ZH[e.typeId] || e.type) + '精华',
+      typeId: e.typeId,
+      tier: e.tier,
+      tierName: e.tierName,
+      perfect: !!e.perfect,
+      cost: e.cost,
+      rule: e.rule,
+      effects: (e.effects || []).map((eff) => {
+        const official = TEXT_AFFIX.get(eff.text);
+        const affix = official && official !== 'conflict' ? official : eff.affix;
+        return {
+          slots: eff.slots || [],
+          weapons: eff.weapons || [],
+          text: eff.text,
+          v: eff.v,
+          affix,
+          affixSource: official && official !== 'conflict' ? 'official' : 'inferred',
+        };
+      }),
+      color: ['#8fa3c8', '#9db8e8', '#e6cf9a', '#d8b4e2'][Math.min(3, Math.max(0, (e.tier || 1) - 1))],
+    }));
+  }
   const essenceDataMeta = GEN_ESSENCES ? {
     source: GEN_ESSENCES.source,
     license: GEN_ESSENCES.license,
@@ -269,14 +313,16 @@
    * 混沌抗性 / 元素抗性 / 命中 / 晕眩阈值），按装备类别拆条目。 */
   /* 灵魂核心：poe2wiki.net 抓取，只收录引擎已建模的效果（生命 / 魔力 / 护盾 /
    * 混沌抗性 / 元素抗性 / 命中 / 晕眩阈值），按装备类别拆条目。 */
-  const DAT_SOULCORES = (typeof window !== 'undefined' && window.POE2_DAT_SOULCORES && window.POE2_DAT_SOULCORES.soulCores) || null;
-  const soulCores = DAT_SOULCORES || [
+  /* 灵魂核心：dat 里 280 条（约 105 KiB 源码），同样由 installHeavyData() 到时再装；
+   * 数据没到就用下面这 5 条兜底，界面上照样能插，只是选项少。 */
+  const SOULCORE_FALLBACK = [
     { id: 'soul_core_of_citaqualotl', name: 'Soul Core of Citaqualotl', color: '#a8c8e8', cost: 14, group: 'all_res', text: '+{0}% to all Elemental Resistances', v: [6], tags: [], slots: ['armour'] },
     { id: 'soul_core_of_puhuarte', name: 'Soul Core of Puhuarte', color: '#a8c8e8', cost: 14, group: 'maxres_fire', text: '+{0}% to Maximum Fire Resistance', v: [2], tags: [], slots: ['armour'] },
     { id: 'soul_core_of_tacati', name: 'Soul Core of Tacati', color: '#a8c8e8', cost: 14, group: 'res_chaos', text: '+{0}% to Chaos Resistance', v: [13], tags: [], slots: ['armour'] },
     { id: 'soul_core_of_tzamoto', name: 'Soul Core of Tzamoto', color: '#a8c8e8', cost: 14, group: 'maxres_cold', text: '+{0}% to Maximum Cold Resistance', v: [2], tags: [], slots: ['armour'] },
     { id: 'soul_core_of_xopec', name: 'Soul Core of Xopec', color: '#a8c8e8', cost: 14, group: 'maxres_light', text: '+{0}% to Maximum Lightning Resistance', v: [2], tags: [], slots: ['armour'] },
   ];
+  let soulCores = SOULCORE_FALLBACK.slice();
 
   const qualItems = [
     { type: 'whetstone', name: '磨刀石', short: '磨', color: '#c0c8d8', desc: '提升武器品质 +1–2%，最高 20%', cost: 'whetstone' },
@@ -325,6 +371,27 @@
     { id: 'rune', name: '符文' },
   ];
 
+  /* ------------------------------------------------------------------ 重数据装配
+   * 把词缀 / 逐档权重 / 灵魂核心三份 dat 数据装进 mods / essences / soulCores，
+   * 并同步 PoE2Data 上的引用。可重入、幂等：重复调用只会重算，不会累加。
+   * 现在由文件末尾调一次（数据已同步加载）；改成按需注入时，注完脚本再调一次即可。 */
+  function installHeavyData() {
+    const built = buildMods();
+    buildEssences();
+    const datSoul = (typeof window !== 'undefined' && window.POE2_DAT_SOULCORES && window.POE2_DAT_SOULCORES.soulCores) || null;
+    if (datSoul && datSoul.length) soulCores = datSoul;
+    const D = global.PoE2Data;
+    if (D) {
+      D.mods = mods;
+      D.modDataMeta = modDataMeta;
+      D.essences = essences;
+      D.soulCores = soulCores;
+      if (built.weightSets) { D.tierWeightSets = built.weightSets; D.weightSets = built.weightSets; }
+      if (built.meta) D.tierWeightMeta = built.meta;
+    }
+    return { mods: mods.length, essences: essences.length, soulCores: soulCores.length };
+  }
+
   global.PoE2Data = {
     game: 'poe2',
     label: '流放之路 2',
@@ -344,6 +411,9 @@
     zhBaseMeta: (typeof window !== 'undefined' && window.POE2_ZH_BASES) || null,
     mods,
     modDataMeta,
+    tierWeightSets: null,
+    weightSets: null,
+    tierWeightMeta: null,
     essences,
     essenceTiers,
     essenceDataMeta,
@@ -372,5 +442,8 @@
     runeHint: '符文 / 灵魂核心插进武器与护甲的插槽；插槽满了要先清空再换。',
     qualityHint: '磨刀石用于武器，护甲片用于护甲 / 盾 / 法器；品质最高 20%，会放大基础防御与武器物理伤害。',
   };
+  global.PoE2Data.installHeavyData = installHeavyData;
+  /* 数据已经在页面上就立刻装配（站点同步加载、Node 测试先 require 了 dat 脚本两种情况都是）。 */
+  installHeavyData();
   if (typeof module !== 'undefined' && module.exports) module.exports = global.PoE2Data;
 })(typeof window !== 'undefined' ? window : globalThis);

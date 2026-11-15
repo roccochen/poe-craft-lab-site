@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-type="software" data-radius="soft" data-buttons="solid" data-motion="on">
+<html lang="zh-CN" data-type="software" data-radius="soft" data-buttons="solid">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,12 @@
   <meta name="description" content="流放之路 2 装备制作辅助工具：选择底子与目标词缀，模拟每一步做装结果并动态推荐后续策略。（流放 1 入口已关闭）">
   <meta name="page-type" content="software">
   <meta name="site-kind" content="gaming">
+  <meta name="theme-color" content="#070a0f">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="流放做装台 · 流放之路 2 装备制作助手">
+  <meta property="og:description" content="选底子、定目标，模拟每一步做装结果并推荐下一步；可撤销、可导出，离线可用。">
+  <meta property="og:image" content="screenshots/preview-poe2.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="assets/styles.css">
   <link rel="stylesheet" href="assets/ux.css">
@@ -15,6 +21,7 @@
   <link rel="stylesheet" href="assets/art.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">跳到主内容 · Skip to content</a>
   <div class="app">
     <header class="topbar">
       <div class="brand">
@@ -66,7 +73,7 @@
       </div>
     </section>
 
-    <main class="workspace">
+    <main class="workspace" id="main-content" tabindex="-1">
       <nav class="rail" id="workspace-rail" aria-label="工作台">
         <button type="button" data-view="gear" class="rail-btn"><span class="rail-ico">01</span><b>装备</b><small>选底子</small></button>
         <button type="button" data-view="targets" class="rail-btn"><span class="rail-ico">02</span><b>目标</b><small>词缀</small></button>
@@ -127,9 +134,10 @@
               <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
               <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
               <div class="tabs weapon-tabs" id="weapon-tabs" role="tablist" aria-label="武器类型" hidden></div>
+              <label class="field-label" for="base-search">搜索底子</label>
               <div class="field search-field">
                 <span class="field-icon" aria-hidden="true">⌕</span>
-                <input id="base-search" type="search" placeholder="搜索底子名称 / 英文名" autocomplete="off">
+                <input id="base-search" type="search" placeholder="输入名称或英文名" autocomplete="off">
               </div>
               <div class="base-list" id="base-list"></div>
             </div>
@@ -156,9 +164,10 @@
                   <span class="mini-title">添加词缀</span>
                   <div class="tabs tiny" id="target-side-tabs"></div>
                 </div>
+                <label class="field-label" for="target-search">搜索词缀</label>
                 <div class="field search-field compact">
                   <span class="field-icon" aria-hidden="true">⌕</span>
-                  <input id="target-search" type="search" placeholder="搜索词缀 / 标签" autocomplete="off">
+                  <input id="target-search" type="search" placeholder="输入词缀或标签" autocomplete="off">
                 </div>
                 <div class="target-pool" id="target-pool"></div>
               </div>
@@ -229,7 +238,9 @@
           <ul class="target-checks" id="target-checks"></ul>
         </div>
         <div class="advisor-section">
-          <div class="section-title"><h3>现在推荐这样做</h3><span class="section-note">按成功率与花费估算</span></div>
+          <div class="section-title"><h3>现在推荐这样做</h3><span class="section-note" id="plan-note">按剩余期望成本排序</span></div>
+          <div class="plan-strip" id="plan-strip"></div>
+          <div class="budget-box" id="budget-box"></div>
           <div class="recommendations" id="recommendations"></div>
         </div>
         <div class="advisor-section collapsible">
@@ -255,12 +266,15 @@
   <script src="js/runtime-config.js"></script>
   <script src="js/data-poe2.dat-omens.js"></script>
   <script src="js/data-poe2.dat-bases.js"></script>
-  <script src="js/data-poe2.dat-mods.js"></script>
+  <!-- 词缀按槽位切片：这里只装共享核心 + 默认槽位（头盔，新档模板用的就是头盔）。
+       换槽位时 app.js 再注入对应切片；data-poe2.dat-mods.js 整表只给 Node 测试用。 -->
+  <script src="js/data-poe2.dat-mods-core.js"></script>
+  <script src="js/data-poe2.dat-mods-helmet.js"></script>
   <script src="js/data-poe2.dat-essences.js"></script>
-  <script src="js/data-poe2.dat-soulcores.js"></script>
   <script src="js/data-poe2.js"></script>
   <script src="js/config-poe2.js"></script>
   <script src="js/engine-poe2.js"></script>
+  <script src="js/solver-poe2.js"></script>
   <script src="js/advisor-poe2.js"></script>
   <script src="js/games.js"></script>
   <script src="js/app.js"></script>

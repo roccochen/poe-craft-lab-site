@@ -37,6 +37,64 @@
     desecrate: '渎', desecrate_pick: '渎',
   };
 
+  /* ------------------------------------------------------------------ 按需加载的词缀切片
+   * 词缀表按槽位切成 12 份（57–226 KiB），index.html 只带共享核心 + 头盔那份；
+   * 换到别的槽位时再注入那一份，装完重建引擎索引并重画。
+   * 灵魂核心（105 KiB）同理：只有插槽 / 符文页才用，打开时再取。 */
+  const slotLoaded = new Set();
+  let slotChain = Promise.resolve();
+  let soulPromise = null;
+  function syncLoadedSlots() {
+    const map = (typeof window !== 'undefined' && window.POE2_DAT_MODS_SLOTS) || null;
+    if (map) Object.keys(map).forEach((k) => slotLoaded.add(k));
+  }
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error(src));
+      document.head.appendChild(s);
+    });
+  }
+  function ensureSlotMods(slot) {
+    syncLoadedSlots();
+    if (!slot || slot === 'charm' || slotLoaded.has(slot)) return Promise.resolve(false);
+    slotChain = slotChain.then(() => {
+      if (slotLoaded.has(slot)) return false;
+      return loadScriptOnce('js/data-poe2.dat-mods-' + slot + '.js').then(() => {
+        slotLoaded.add(slot);
+        D.installHeavyData();
+        if (E.installData) E.installData();
+        renderAll();
+        return true;
+      });
+    }).catch((err) => {
+      toast('词缀数据加载失败：' + err.message + '（可刷新重试）', 'error');
+      return false;
+    });
+    return slotChain;
+  }
+  function soulCoresLoaded() { return (D.soulCores || []).length > 20; }
+  function ensureSoulCores() {
+    if (soulCoresLoaded()) return Promise.resolve(false);
+    if (soulPromise) return soulPromise;
+    soulPromise = loadScriptOnce('js/data-poe2.dat-soulcores.js')
+      .then(() => {
+        D.installHeavyData();
+        if (E.installData) E.installData();
+        renderAll();
+        return true;
+      })
+      .catch((err) => {
+        soulPromise = null;
+        toast('灵魂核心数据加载失败：' + err.message + '（可刷新重试）', 'error');
+        return false;
+      });
+    return soulPromise;
+  }
+
   /* ------------------------------------------------------------------ state */
   function runtimeCooldown() {
     return Math.max(60, Math.round(Number(RUNTIME.cooldownSeconds) || 300));
@@ -49,6 +107,8 @@
       autoSync: RUNTIME.autoSync !== false && !!configUrl,
       configUrl,
       cooldownSeconds: runtimeCooldown(),
+      sidePolicy: 'real',
+      budget: 100,
     };
   }
   function defaultState() {
@@ -140,6 +200,17 @@
   }
 
   const state = loadState();
+  /* 落侧策略：real = 真实游戏（两侧都可加时 50/50），assist = 优先补目标缺的一侧。
+   * 必须在任何渲染 / 顾问计算之前生效，否则会先按旧口径算出概率。 */
+  function applySidePolicy() {
+    if (typeof E.setSidePolicy === 'function') return E.setSidePolicy(state.settings && state.settings.sidePolicy);
+    return 'real';
+  }
+  applySidePolicy();
+  function sidePolicyNow() {
+    if (typeof E.getSidePolicy === 'function') return E.getSidePolicy();
+    return (state.settings && state.settings.sidePolicy) || 'real';
+  }
   let saveTimer = null;
   let autoTimer = null;
   let autoSyncTimer = null;
@@ -311,7 +382,7 @@
         const def = E.getTargetDef(t.modId);
         if (!def) return '';
         const hit = E.findMatchingAffix(state.item, t);
-        return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>T' + (t.tier || 1) + '+</em><i>' + (hit ? '✓' : '') + '</i></li>';
+        return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
       }).join('');
       el.innerHTML = rightHead('STEP 02', '目标决定路线', '先选 2–3 条。目标越多，路线越长，单次命中概率越低。') +
         '<div class="aside-progress"><b>' + ev.matchedCount + ' / ' + ev.targetCount + '</b><span>已命中</span></div>' +
@@ -442,6 +513,7 @@
         $('#base-search').value = '';
         renderSlotTabs();
         renderBases();
+        ensureSlotMods(state.slot);
       };
     });
   }
@@ -524,33 +596,48 @@
       };
     });
   }
+  /* 底子列表分页：262 个底子塞进滚动条里，既难找、在触屏上还容易把滑动手势吃掉。
+     改成一次渲染 12 个（两列），点「显示更多」再加 12 个。 */
+  let baseLimit = 12;
+  let baseFilterKey = '';
   function renderBases() {
     renderWeaponTabs();
     const family = state.slot === 'weapon' && state.weaponFamily !== 'all' ? state.weaponFamily : '';
     const q = (state.baseSearch || '').trim().toLowerCase();
+    const filterKey = state.slot + '|' + family + '|' + q;
+    if (filterKey !== baseFilterKey) { baseFilterKey = filterKey; baseLimit = 12; }
     const list = D.bases.filter((b) => {
       if (b.slot !== state.slot) return false;
       if (family && weaponFamily(b) !== family) return false;
       if (!q) return true;
       return (b.name + ' ' + (b.nameZh || '') + ' ' + b.en + ' ' + b.id).toLowerCase().indexOf(q) !== -1;
     });
+    // 当前选中的底子可能排在后面：把窗口撑到能看见它
+    const activeIdx = list.findIndex((b) => b.id === state.baseId);
+    if (activeIdx >= baseLimit) baseLimit = activeIdx + 1;
     const slotTotal = family ? D.bases.filter((b) => b.slot === state.slot).length : 0;
     $('#base-count').textContent = list.length + (family ? ' / ' + slotTotal : '') + ' 个';
     if (!list.length) {
       $('#base-list').innerHTML = '<div class="target-empty">没有匹配的底子，换个关键词试试。</div>';
       return;
     }
-    $('#base-list').innerHTML = list.map((b) => {
+    const shown = list.slice(0, baseLimit);
+    $('#base-list').innerHTML = shown.map((b) => {
       const active = b.id === state.baseId;
       return '<button type="button" class="base-card ' + (active ? 'active' : '') + '" data-base="' + b.id + '" title="' + esc(b.implicit || b.en) + '">' +
         '<span class="base-glyph">' + (iconForSlot[b.slot] || (b.slot || '◆').slice(0, 1).toUpperCase()) + '</span>' +
         '<span class="base-main"><span class="bn">' + esc(baseLabel(b)) + '</span><span class="be">' + esc(baseSubLabel(b) || b.en) + ' · ' +
           (b.slot === 'weapon' ? esc(weaponFamilyLabel(weaponFamily(b))) + ' · ' : '') + 'i' + b.ilvl + '</span></span>' +
         '<span class="base-stats">' + esc(baseStatText(b)) + '</span></button>';
-    }).join('');
+    }).join('') + (list.length > shown.length
+      ? '<div class="base-more"><button type="button" class="btn ghost wide" data-base-more>显示更多（还有 ' +
+        (list.length - shown.length) + ' 个）</button></div>'
+      : '');
     $$('#base-list [data-base]').forEach((b) => {
       b.onclick = () => changeBase(b.dataset.base);
     });
+    const more = $('#base-list [data-base-more]');
+    if (more) more.onclick = () => { baseLimit += 12; renderBases(); };
   }
   function changeBase(baseId) {
     if (baseId === state.baseId) return;
@@ -569,14 +656,45 @@
       renderAll();
       toast('已切换底子：' + baseLabel(base), 'success');
     };
+    /* 目标过滤（targetEligibleOnBase）要看新槽位的词缀表：换到还没装过的槽位时
+     * 先把它取来再应用，否则会把目标全判成不适用而清空。 */
+    const run = () => { ensureSlotMods(E.getBase(baseId).slot).then(apply); };
     if (state.item.affixes.length || state.log.length || state.spent > 0) {
-      openConfirm('切换底子？', '切换底子会重置当前物品、制作记录和花费统计。目标词缀中不适用的会被移除。', apply);
+      openConfirm('切换底子？', '切换底子会重置当前物品、制作记录和花费统计。目标词缀中不适用的会被移除。', run);
     } else {
-      apply();
+      run();
     }
   }
 
   /* ------------------------------------------------------------------ render: targets */
+
+  /* 档位显示口径
+   * 数据里的档位是「全组」排序的：+最大生命的 T1–T4 只掉在胸甲上，
+   * 头盔最高只有全组的 T5。但玩家在游戏里看到的是「这个部位的 T1」，
+   * 所以对外一律显示本地下标，内部（存档 / 目标匹配）仍用全组下标。 */
+  function localRankOf(mod, tier, baseId) {
+    if (!mod || !tier) return null;
+    const base = E.getBase(baseId);
+    const local = E.tierRankForBase(mod, tier, base);
+    return local == null ? E.tierRank(mod, tier) : local;
+  }
+  function poolLocalRank(mod, tier) { return localRankOf(mod, tier, state.baseId); }
+  /* 目标在存档里存的是全组档位，界面要换成该部位的本地下标 */
+  function targetTierLabel(t, def) {
+    if (D.bench.some((b) => b.id === t.modId)) return '工艺';
+    const want = t.tier ? Number(t.tier) : null;
+    if (!want) return '任意档';
+    const tier = (def.tiers || []).find((x) => E.tierRank(def, x) === want);
+    if (!tier) return 'T' + want + '+';
+    const local = E.tierRankForBase(def, tier, E.getBase(state.item.baseId));
+    return 'T' + (local == null ? want : local) + '+';
+  }
+  function affixLocalRank(affix, baseId) {
+    if (!affix) return null;
+    const hit = E.affixTierForBase(affix, E.getBase(baseId || (state.item && state.item.baseId)));
+    return hit ? hit.local : affix.tierRank;
+  }
+
   function targetPreview(def, tierRank) {
     if (!def) return '';
     if (D.bench.some((b) => b.id === def.id)) {
@@ -603,11 +721,12 @@
       const chosenTier = !isBench && t.tier ? def.tiers.find((tier) => E.tierRank(def, tier) === Number(t.tier)) : null;
       const unavailable = !!(chosenTier && chosenTier.ilvl > state.ilvl);
       const tierOptions = !isBench
-        ? def.tiers.map((tier) => {
-          const rank = E.tierRank(def, tier);
-          const avail = tier.ilvl <= state.ilvl;
-          return '<option value="' + rank + '" ' + (Number(t.tier) === rank ? 'selected' : '') + ' ' + (avail ? '' : 'disabled') +
-            ' title="需要物品等级 ' + tier.ilvl + '">T' + rank + (avail ? '' : '·等级不足') + '</option>';
+        ? E.baseTierLadder(def, E.getBase(state.baseId)).map((x) => {
+          // 值仍存全组档位（兼容已有存档），显示用该部位的本地下标：
+          // 头盔上 +生命的最高档在游戏里是 T1，在全组里是 T5。
+          const avail = x.ilvl <= state.ilvl;
+          return '<option value="' + x.rankGlobal + '" ' + (Number(t.tier) === x.rankGlobal ? 'selected' : '') + ' ' + (avail ? '' : 'disabled') +
+            ' title="需要物品等级 ' + x.ilvl + '">T' + x.rankLocal + (avail ? '' : '·等级不足') + '</option>';
         }).join('')
         : '<option>工艺</option>';
       return '<div class="target-item ' + (matched ? 'hit' : '') + (unavailable ? ' invalid' : '') + '" data-target-index="' + i + '">' +
@@ -686,7 +805,7 @@
         return '<div class="pool-row">' +
           '<span class="pool-info"><span class="pool-name">' + esc(m.name) + (isBench ? ' <small style="color:var(--cyan)">工艺</small>' : '') + '</span>' +
           '<span class="pool-stat">' + esc(preview) + '</span>' +
-          '<span class="pool-tags">' + esc(tags) + (isBench ? '' : ' · T' + E.tierRank(m, bestTier) + ' / i' + bestTier.ilvl) + '</span></span>' +
+          '<span class="pool-tags">' + esc(tags) + (isBench ? '' : ' · T' + poolLocalRank(m, bestTier) + ' / i' + bestTier.ilvl) + '</span></span>' +
           '<button class="pool-add" type="button" data-add-target="' + m.id + '" ' + (full ? 'disabled title="该侧目标已满"' : '') + '>+</button></div>';
       }).join('');
     };
@@ -711,12 +830,13 @@
     }).length;
     if (sideCount >= 3) { toast('该侧最多 3 条目标词缀。', 'error'); return; }
     const isBench = D.bench.some((b) => b.id === modId);
+    /* 默认档位要在「这个部位真正能掉的档」里挑，不能按全组排名——
+     * 头盔上 +生命的全组 T2 根本掉不出来，会把目标设成不可达。 */
     let defaultTier = 1;
     if (!isBench) {
-      const ranks = def.tiers
-        .filter((tier) => tier.ilvl <= state.ilvl)
-        .map((tier) => E.tierRank(def, tier));
-      defaultTier = ranks.indexOf(2) !== -1 ? 2 : (ranks.length ? ranks[ranks.length - 1] : 1);
+      const ladder = E.baseTierLadder(def, E.getBase(state.baseId)).filter((x) => x.ilvl <= state.ilvl);
+      const chosen = ladder.length >= 2 ? ladder[ladder.length - 2] : ladder[ladder.length - 1];
+      defaultTier = chosen ? chosen.rankGlobal : 1;
     }
     state.targets.push({ modId, tier: isBench ? null : defaultTier });
     state.customTargets = true;
@@ -737,7 +857,7 @@
       const def = E.getTargetDef(t.modId);
       if (!def) return '';
       const hit = E.findMatchingAffix(state.item, t);
-      return '<li class="' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>T' + (t.tier || 1) + '+</em><i>' + (hit ? '✓' : '') + '</i></li>';
+      return '<li class="' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
     }).join('');
     if (empty) empty.hidden = targets.length > 0;
   }
@@ -805,7 +925,7 @@
     const modsHtml = item.affixes.length
       ? '<ul class="item-mod-list">' + item.affixes.map((a) => {
         const tagBits = [];
-        if (!a.crafted && !a.essence) tagBits.push('T' + a.tierRank);
+        if (!a.crafted && !a.essence) tagBits.push('T' + affixLocalRank(a, item.baseId));
         if (a.essence) tagBits.push('精华');
         if (a.crafted) tagBits.push('工艺');
         if (a.meta) tagBits.push('meta');
@@ -1131,6 +1251,8 @@
     });
   }
   function renderActionBody() {
+    /* 符文 / 插槽页才需要灵魂核心表（105 KiB）：进去时再取，取完会重画一次 */
+    if ((state.tab === 'rune' || state.tab === 'sockets') && !soulCoresLoaded()) ensureSoulCores();
     const hint = $('#action-hint');
     const hints = D.hints || {};
     if (state.pendingResult) hint.textContent = '先确认上一步的实际结果，再执行新的操作。';
@@ -1960,9 +2082,95 @@
       return '<li class="check-item ' + (hit ? 'ok' : 'miss') + '">' +
         '<span class="mark">' + (hit ? '✓' : '×') + '</span>' +
         '<span>' + esc(def.name) + '</span>' +
-        '<span class="tier">' + (isBench ? '工艺' : 'T' + (t.tier || 1) + '+') + (hit ? ' · 已命中' : '') + '</span></li>';
+        '<span class="tier">' + esc(targetTierLabel(t, def)) + (hit ? ' · 已命中' : '') + '</span></li>';
     }).join('') + '</ul>';
   }
+  /* 期望成本条：剩余期望成本 / 完成概率 / 最优动作的分支预览。
+   * 数字来自抽象状态 MDP 求解器（js/solver-poe2.js）。 */
+  function renderPlanStrip(analysis) {
+    const el = $('#plan-strip');
+    if (!el) return;
+    const e = analysis && analysis.expected;
+    if (!e) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    const sideCN = { prefix: '前缀', suffix: '后缀' };
+    /* 目标在该部位根本掉不出来：别显示一个叫「做不完」的数字，直接说清是哪条 */
+    if (e.unreachable) {
+      const names = (e.unreachableTargets || []).map((id) => {
+        const def = E.getTargetDef(id);
+        return def ? def.name : id;
+      });
+      let hint;
+      if (e.unreachableReason === 'slots') hint = '同一侧最多 3 条词缀，当前目标装不下：减一条同侧目标再试。';
+      else if (names.length) hint = '这些词缀不会出现在当前底子上：' + names.map(esc).join('、') + '。换底子或去掉它。';
+      else if (e.unreachableReason === 'probability') hint = '按当前目标组合，6 个词缀位装不下或无法通过任何通货达成。';
+      else hint = '按当前底子 / 物品等级，这组目标无法通过任何通货达成。';
+      el.innerHTML = '<div class="plan-strip-head"><span class="plan-stat warn"><i>目标不可达</i><b>—</b></span>' +
+        '<span class="plan-hint">' + hint + '</span></div>';
+      return;
+    }
+    const branchHtml = ((e.best && e.best.branches) || []).slice(0, 3).map((b) => {
+      let label;
+      if (b.hitTarget) {
+        const def = E.getTargetDef(b.hitTarget.modId);
+        label = '出「' + esc(def ? def.name : b.hitTarget.group) + '」';
+      } else if (b.lostTarget) {
+        const def = E.getTargetDef(b.lostTarget.modId);
+        label = '丢掉「' + esc(def ? def.name : b.lostTarget.group) + '」';
+      } else {
+        label = '出废词' + (b.side ? '·' + sideCN[b.side] : '');
+      }
+      return '<span class="plan-branch"><b>' + (b.prob * 100).toFixed(1) + '%</b> ' + label +
+        ' <i>→ 剩 ' + (b.etc == null ? '∞' : A.fmtCost(b.etc)) + '</i></span>';
+    }).join('');
+    const etc = e.etc == null ? '做不完' : (e.lowerBound ? '≥ ' + A.fmtCost(e.etc) : A.fmtCost(e.etc));
+    el.innerHTML =
+      '<div class="plan-strip-head">' +
+      '<span class="plan-stat' + (e.lowerBound ? ' warn' : '') + '"><i>剩余期望</i><b>' + etc + '</b></span>' +
+      (e.lowerBound
+        ? '<span class="plan-stat warn"><i>完成概率</i><b>极低</b></span>'
+        : '<span class="plan-stat"><i>完成概率</i><b>' + (e.pSuccess * 100).toFixed(0) + '%</b></span>') +
+      '<span class="plan-stat"><i>求解状态</i><b>' + (e.states || 0) + '</b></span>' +
+      '</div>' +
+      (e.lowerBound
+        ? '<div class="plan-branches">目标档位过严：真实期望比这个下界还高，建议放宽一条档位或换目标。</div>'
+        : '') +
+      (branchHtml ? '<div class="plan-branches">最强分支：' + branchHtml + '</div>' : '');
+  }
+
+  /* 预算模式：给定预算的完成概率 + 预算 ↔ 成功率曲线（Pareto 前沿） */
+  function renderBudgetBox(analysis) {
+    const el = $('#budget-box');
+    if (!el) return;
+    const e = analysis && analysis.expected;
+    if (!e || !e.budget || e.unreachable) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    const b = e.budget;
+    const budget = Number(state.settings.budget) > 0 ? Number(state.settings.budget) : 100;
+    const p = b.pAt(budget);
+    const pts = b.frontier.filter((_, i) => i % Math.max(1, Math.floor(b.frontier.length / 28)) === 0);
+    const bars = pts.map((pt) => '<i style="height:' + Math.max(3, Math.round(pt.pSuccess * 100)) + '%" ' +
+      'title="' + pt.budget + 'c → ' + (pt.pSuccess * 100).toFixed(0) + '%"></i>').join('');
+    el.innerHTML =
+      '<div class="budget-head"><span>预算模式</span>' +
+      '<label><input id="budget-input" type="number" min="0" step="10" value="' + budget + '"> c</label>' +
+      '<b class="' + (p >= 0.9 ? 'good' : p >= 0.5 ? '' : 'warn') + '">' + (p * 100).toFixed(0) + '% 能做完</b></div>' +
+      '<div class="budget-bars">' + bars + '</div>' +
+      '<div class="budget-note">' +
+      (b.minBudget90 != null
+        ? '90% 把握至少 ' + A.fmtCost(b.minBudget90) + ' · 一半机会 ' + A.fmtCost(b.minBudget50) + ' · 平均 ' + A.fmtCost(b.etc)
+        : '预算再多也做不完') +
+      '</div>';
+    const inp = $('#budget-input');
+    if (inp) {
+      inp.onchange = () => {
+        state.settings.budget = Math.max(0, Number(inp.value) || 0);
+        save();
+        renderAdvisor();
+      };
+    }
+  }
+
   function renderAdvisor() {
     const targets = currentTargets();
     const elDiag = $('#diagnosis');
@@ -2026,6 +2234,8 @@
     }
 
     const recs = analysis.recommendations.slice(0, 3);
+    renderPlanStrip(analysis);
+    renderBudgetBox(analysis);
     if (!recs.length) {
       elRecs.innerHTML = '<div class="action-none">当前没有可执行的建议，请检查目标与物品状态。</div>';
     } else {
@@ -2034,12 +2244,17 @@
         const steps = (r.steps || []).map((s) => '<li>' + esc(s) + '</li>').join('');
         return '<article class="rec-card ' + (i === 0 ? 'primary' : '') + '">' +
           '<div class="rec-top"><span class="rec-rank">' + rank + '</span><span class="rec-title">' + esc(r.title) + '</span>' +
+          (r.exact
+            ? '<span class="rec-badge exact" title="按官方权重表解析计算，没有抽样噪声">精确</span>'
+            : '<span class="rec-badge est" title="蒙特卡洛抽样估计，会有 ±2% 左右的抖动">估计</span>') +
           '<span class="rec-cost"><b>' + costText(r.cost) + '</b> / 次</span></div>' +
           '<div class="rec-detail">' + esc(r.detail) + '</div>' +
           '<div class="rec-metrics">' +
           '<div class="metric"><span>更接近目标</span><b class="' + (r.pImprove >= 0.25 ? 'good' : r.pImprove > 0 ? '' : 'warn') + '">' + pctText(r.pImprove) + '</b></div>' +
           '<div class="metric"><span>直接做完</span><b class="' + (r.pComplete > 0 ? 'good' : '') + '">' + pctText(r.pComplete) + '</b></div>' +
-          '<div class="metric"><span>平均花费</span><b>' + A.fmtCost(r.expectedCost) + '</b></div>' +
+          (r.totalExpected != null
+            ? '<div class="metric hl"><span>走完还要</span><b>' + A.fmtCost(r.totalExpected) + '</b></div>'
+            : '<div class="metric"><span>平均花费</span><b>' + A.fmtCost(r.expectedCost) + '</b></div>') +
           '</div>' +
           (r.pRegress > 0 ? '<div class="rec-risk">可能弄丢已有目标 ' + pctText(r.pRegress) + '</div>' : '') +
           (r.warning ? '<div class="rec-warning">' + esc(r.warning) + '</div>' : '') +
@@ -2179,7 +2394,7 @@
       const affixes = draft.affixes.map((a) => {
         return '<div class="manual-mod">' +
           '<span class="side-badge ' + a.affix + '">' + (a.affix === 'prefix' ? '前' : '后') + '</span>' +
-          '<span><span class="mm-text">' + mdText(a.text) + '</span><div class="mm-meta">T' + a.tierRank + (a.crafted ? ' · 工艺' : '') + (a.fractured ? ' · 破裂' : '') + (a.essence ? ' · 精华' : '') + '</div></span>' +
+          '<span><span class="mm-text">' + mdText(a.text) + '</span><div class="mm-meta">T' + affixLocalRank(a, draft.baseId) + (a.crafted ? ' · 工艺' : '') + (a.fractured ? ' · 破裂' : '') + (a.essence ? ' · 精华' : '') + '</div></span>' +
           '<button class="btn tiny ghost" data-mf="' + a.uid + '" type="button">' + (a.fractured ? '取消破裂' : '设为破裂') + '</button>' +
           '<button class="btn tiny ghost" data-mc="' + a.uid + '" type="button">' + (a.crafted ? '取消工艺' : '设为工艺') + '</button>' +
           '<button class="remove-btn" data-mr="' + a.uid + '" type="button" title="移除">×</button></div>';
@@ -2194,9 +2409,9 @@
       const poolHtml = pool.length ? pool.map((m) => {
         const isBench = D.bench.some((b) => b.id === m.id);
         const tiers = isBench ? '<span style="font-size:9px;color:var(--muted-2)">工艺</span>' :
-          '<select data-mtier="' + m.id + '">' + m.tiers.map((t) => {
-            const rank = E.tierRank(m, t);
-            return '<option value="' + rank + '" ' + (rank === (m.tiers.length >= 2 ? 2 : 1) ? 'selected' : '') + '>T' + rank + ' · i' + t.ilvl + '</option>';
+          '<select data-mtier="' + m.id + '">' + E.baseTierLadder(m, base).map((x) => {
+            const rank = x.rankGlobal;
+            return '<option value="' + rank + '" ' + (rank === (m.tiers.length >= 2 ? 2 : 1) ? 'selected' : '') + '>T' + x.rankLocal + ' · i' + x.ilvl + '</option>';
           }).join('') + '</select>';
         const preview = isBench ? E.formatText(m.text, m.v.map((r) => (r[0] + r[1]) / 2)) : E.formatText(m.text, m.tiers[m.tiers.length - 1].v.map((r) => (r[0] + r[1]) / 2));
         return '<div class="pool-row" data-manual-row="' + (m.name + ' ' + m.text + ' ' + (m.tags || []).join(' ')).toLowerCase() + '">' +
@@ -2537,26 +2752,39 @@
       if (!iso) return '—';
       try { return new Date(iso).toLocaleDateString('zh-CN'); } catch (e) { return '—'; }
     };
+    const isLocal = (modMeta && modMeta.source === 'local-game-files') || (baseMeta && baseMeta.source === 'local-game-files');
+    const sourceLabel = isLocal ? '本地游戏文件导出（官方表）' : '社区 wiki 抓取';
+    const license = (modMeta && modMeta.license) || (baseMeta && baseMeta.license) || '—';
     const approxWeights = D.mods.filter((m) => m.weightSource === 'approx').length;
+    const tierMeta = D.tierWeightMeta || (modMeta && modMeta.stats) || {};
+    const sets = (D.weightSets || []).length;
     const rows = [];
     if (modMeta) {
       rows.push('<div class="read-row"><span>词缀数据</span><b>' + D.mods.length + ' 组 / '
         + D.mods.reduce((n, m) => n + m.tiers.length, 0) + ' 档</b></div>');
-      rows.push('<div class="read-row"><span>词缀抓取时间</span><b>' + esc(fmtDate(modMeta.fetchedAt)) + '</b></div>');
+      if (modMeta.fetchedAt) rows.push('<div class="read-row"><span>词缀抓取时间</span><b>' + esc(fmtDate(modMeta.fetchedAt)) + '</b></div>');
     }
     if (baseMeta) {
       rows.push('<div class="read-row"><span>底子数据</span><b>' + D.bases.length + ' 个</b></div>');
-      rows.push('<div class="read-row"><span>底子抓取时间</span><b>' + esc(fmtDate(baseMeta.fetchedAt)) + '</b></div>');
+      if (baseMeta.fetchedAt) rows.push('<div class="read-row"><span>底子抓取时间</span><b>' + esc(fmtDate(baseMeta.fetchedAt)) + '</b></div>');
     }
-    rows.push('<div class="read-row"><span>来源 / 许可</span><b>' + esc((modMeta && modMeta.source) || (baseMeta && baseMeta.source) || '—')
-      + ' · CC BY-NC-SA 3.0</b></div>');
+    if (sets) {
+      rows.push('<div class="read-row"><span>逐档权重</span><b>' + sets + ' 组部位标签集合'
+        + (tierMeta.tierWeightsUnit ? ' · 权重全为 1（档内等概率）' : '') + '</b></div>');
+    }
+    rows.push('<div class="read-row"><span>来源</span><b>' + esc(sourceLabel) + '</b></div>');
+    rows.push('<div class="read-row"><span>许可</span><b>' + esc(license) + '</b></div>');
     if (approxWeights) {
       rows.push('<div class="read-row"><span>权重可信度</span><b>' + approxWeights + ' 组为估计值</b></div>');
     }
+    const note = isLocal
+      ? '词缀、底子与逐档权重来自本地游戏文件导出（官方 Mods / BaseItemTypes 表）。'
+        + '加词缀与混沌 / 剥离的概率按官方权重表解析计算，标「精确」；'
+        + '点金 / 瓦尔 / 亵渎 / 预兆仍是抽样，标「估计」。档位显示为该部位的本地下标，存档里存全组下标。'
+      : '词缀与底子来自社区 wiki（CC BY-NC-SA 3.0，非商业、需署名）；概率只用于比较策略，不等于官方掉率。';
     return '<details class="config-section" open><summary>数据来源 <small>只读</small></summary><div class="config-section-body">'
       + '<div class="read-grid">' + rows.join('') + '</div>'
-      + '<div class="config-note">词缀与底子来自社区 wiki（CC BY-NC-SA 3.0，非商业、需署名）；'
-      + '生成权重尚未取得官方数值，带「估计值」标记，概率只用于比较策略，不等于官方掉率。</div>'
+      + '<div class="config-note">' + note + '</div>'
       + '</div></details>';
   }
   function openSettings() {
@@ -2593,6 +2821,14 @@
       '<div class="config-note">' + (staticMode
         ? '价格来自同源静态配置，前端只能请求刷新，不能填写。前端每 ' + Math.round(runtimeCooldown() / 60) + ' 分钟最多请求一次。'
         : '价格由后端从上游拉取，前端只能请求刷新，不能填写。每轮拉取后进入 ' + Math.round(runtimeCooldown() / 60) + ' 分钟冷却；冷却由后端强制，前端另有倒计时。') + '</div>' +
+
+      /* 落侧规则：影响所有「加词缀」类通货的命中概率与模拟结果 */
+      '<div class="config-setting"><span>落侧规则</span>' +
+      '<select id="config-side-policy">' +
+      '<option value="real"' + (sidePolicyNow() === 'real' ? ' selected' : '') + '>真实（游戏行为：两侧都可加时 50/50）</option>' +
+      '<option value="assist"' + (sidePolicyNow() === 'assist' ? ' selected' : '') + '>辅助（优先补目标缺的那一侧）</option>' +
+      '</select>' +
+      '<small>真实 = 游戏行为，单侧目标的概率要乘 1/2。辅助 = 旧行为，会把词缀优先落在目标还没命中的一侧，命中率偏高约 2 倍，只适合看「理想情况」。</small></div>' +
 
       dataSourceSection +
 
@@ -2654,6 +2890,18 @@
         refreshConfig({ silent: true }).then((ok) => { if (ok) openSettings(); });
       }
     };
+    const sideSel = $('#config-side-policy');
+    if (sideSel) {
+      sideSel.onchange = (e) => {
+        state.settings.sidePolicy = e.target.value === 'assist' ? 'assist' : 'real';
+        applySidePolicy();
+        save();
+        renderAll();
+        toast(e.target.value === 'assist'
+          ? '已切到辅助落侧：命中率按「优先补目标缺的一侧」计算（偏乐观）。'
+          : '已切到真实落侧：两侧都能加时按 50/50 计算。');
+      };
+    }
   }
 
   /* ------------------------------------------------------------------ export / import */
@@ -2925,15 +3173,26 @@
       state.attempts = 0;
       state.history = [];
     }
-    renderAll();
-    if (REQUESTED_GAME === 'poe1') {
-      try { history.replaceState(null, '', location.pathname + '?game=poe2'); } catch (e) { /* file:// 下忽略 */ }
-      toast('流放 1 入口已关闭，当前只提供流放 2。', '', 4200);
-    }
-    setupAutoSync();
-    if (state.settings.autoSync) {
-      setTimeout(() => refreshConfig({ onlyIfNewer: true, silent: true }), 800);
-    }
+    /* 词缀按槽位切片：先把当前槽位那份取来，再画第一屏——
+     * 存档里的装备可能是任意槽位，拿错切片会把目标词缀判成不适用。 */
+    syncLoadedSlots();
+    const slotReady = slotLoaded.has(state.slot)
+      ? Promise.resolve(false)
+      : ensureSlotMods(state.slot);
+    const soulReady = (state.item && Array.isArray(state.item.runes) && state.item.runes.length)
+      ? ensureSoulCores()
+      : Promise.resolve(false);
+    Promise.all([slotReady, soulReady]).then(() => {
+      renderAll();
+      if (REQUESTED_GAME === 'poe1') {
+        try { history.replaceState(null, '', location.pathname + '?game=poe2'); } catch (e) { /* file:// 下忽略 */ }
+        toast('流放 1 入口已关闭，当前只提供流放 2。', '', 4200);
+      }
+      setupAutoSync();
+      if (state.settings.autoSync) {
+        setTimeout(() => refreshConfig({ onlyIfNewer: true, silent: true }), 800);
+      }
+    });
   }
 
   init();

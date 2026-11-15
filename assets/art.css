@@ -9,10 +9,10 @@
   --line-2: #3a4a5c;
   --gold: #d4b06a;
   --gold-2: #f2dca8;
-  --gold-dim: #9d8352;
+  --gold-dim: #ab9160;
   --text: #edf1f5;
   --muted: #a3afbc;
-  --muted-2: #7d8a99;
+  --muted-2: #919eac; /* 4.6:1 on --line #263240：原来的 #7d8a99 只有 3.6:1 */
   --cyan: #8ad3de;
   --green: #8bcfaa;
   --red: #d8867c;
@@ -596,3 +596,122 @@ body::before {
 .desecrate-option:hover { border-color: rgba(160, 122, 208, .7); background: rgba(160, 122, 208, .12); }
 .desecrate-text { flex: 1; font-size: 12px; line-height: 1.6; }
 .desecrate-tier { color: var(--muted-2); font-size: 10px; white-space: nowrap; }
+
+/* ------------------------------------------------------------------ 触屏可达性
+   指头不是鼠标：每个可控元素至少 44×44，相邻留 8px。
+   原来物品等级输入框 55×27 只离「撤销」6px，槽位 tab 32px 高、间隔 4px，很容易点错。
+   放在 art.css 末尾，好盖过前面 .btn{min-height:32px} 这类规则。 */
+@media (max-width: 700px) {
+  .btn,
+  .btn.tiny,
+  .btn.gold,
+  .btn.wide,
+  .tabs button,
+  .tabs.tiny button,
+  .weapon-tabs button,
+  .slot-tabs button,
+  .journey-steps button,
+  .collapse-toggle,
+  .rail-btn,
+  .search-field input,
+  .ilvl-field input,
+  .target-summary-head .btn {
+    min-height: 44px;
+  }
+  .btn, .btn.tiny { padding: 9px 12px; }
+  .tabs, .slot-tabs, .weapon-tabs, .toolbar-actions, .top-actions { gap: 8px; }
+  .tabs button, .slot-tabs button { padding: 8px 6px; }
+  .mobile-next-actions { gap: 8px; }
+  .mobile-next-actions .btn { min-height: 44px; }
+  .top-actions .btn { flex: 1 1 calc(50% - 4px); }
+
+  /* 排版里的问号：看着还是 17px，热区撑到 45px，不把标题撑高 */
+  .help-dot { position: relative; }
+  .help-dot::before { content: ""; position: absolute; inset: -14px; }
+}
+
+/* ---------------------------------------------------------------- *
+ * 概率来源标记：精确（解析式）vs 估计（蒙特卡洛）
+ * 玩家按这个标签决定"能不能拿这个百分比下注"。
+ * ---------------------------------------------------------------- */
+.rec-badge {
+  font-size: 8px; letter-spacing: .08em; padding: 0 4px; border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, .14); color: var(--muted-2);
+  vertical-align: middle; margin-left: 5px; white-space: nowrap;
+}
+.rec-badge.exact {
+  color: #9fd3a8; border-color: rgba(120, 190, 140, .38);
+  background: rgba(120, 190, 140, .08);
+}
+.rec-badge.est { color: var(--muted-2); border-color: rgba(255, 255, 255, .1); }
+
+/* 落侧规则选择器（数据状态弹窗） */
+.config-setting {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 10px 0 4px; padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 6px;
+  background: rgba(0, 0, 0, .16);
+}
+.config-setting > span { font-size: 10px; letter-spacing: .06em; color: var(--gold-dim); }
+.config-setting select {
+  font: inherit; font-size: 11px; padding: 4px 6px; border-radius: 4px;
+  background: rgba(0, 0, 0, .35); color: var(--text);
+  border: 1px solid rgba(200, 167, 106, .3);
+}
+.config-setting small { flex: 1 1 100%; font-size: 9px; line-height: 1.6; color: var(--muted-2); }
+
+/* ---------------------------------------------------------------- *
+ * 期望成本条（剩余期望成本 / 完成概率 / 分支预览）
+ * ---------------------------------------------------------------- */
+.plan-strip {
+  margin: 6px 0 10px; padding: 9px 11px; border-radius: 7px;
+  border: 1px solid rgba(200, 167, 106, .22);
+  background: linear-gradient(180deg, rgba(200, 167, 106, .07), rgba(0, 0, 0, .18));
+}
+.plan-strip-head { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.plan-stat { display: flex; flex-direction: column; gap: 1px; }
+.plan-stat i { font-style: normal; font-size: 9px; letter-spacing: .08em; color: var(--muted-2); }
+.plan-stat b { font-size: 15px; color: var(--gold-2); font-weight: 500; }
+.plan-branches {
+  margin-top: 7px; padding-top: 7px; display: flex; flex-wrap: wrap; gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  font-size: 9.5px; color: var(--muted-2);
+}
+.plan-branch { white-space: nowrap; }
+.plan-branch b { color: var(--text); font-weight: 500; }
+.plan-branch i { font-style: normal; color: var(--gold-dim); }
+.metric.hl { border-color: rgba(200, 167, 106, .3); background: rgba(200, 167, 106, .07); }
+.metric.hl b { color: var(--gold-2); }
+
+.plan-stat.warn b { color: #df9e8f; }
+.plan-hint { flex: 1 1 240px; font-size: 9.5px; line-height: 1.6; color: var(--muted-2); }
+
+/* ---------------------------------------------------------------- *
+ * 预算模式：预算输入 + 预算↔成功率前沿
+ * ---------------------------------------------------------------- */
+.budget-box {
+  margin: 0 0 10px; padding: 8px 11px; border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(0, 0, 0, .18);
+}
+.budget-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 9.5px; color: var(--muted-2); }
+.budget-head > span { letter-spacing: .08em; color: var(--gold-dim); }
+.budget-head label { display: flex; align-items: center; gap: 4px; }
+.budget-head input {
+  width: 68px; padding: 3px 6px; border-radius: 4px; font: inherit; font-size: 11px;
+  background: rgba(0, 0, 0, .35); color: var(--text);
+  border: 1px solid rgba(200, 167, 106, .3);
+}
+.budget-head b { margin-left: auto; color: var(--text); font-weight: 500; font-size: 12px; }
+.budget-head b.good { color: #9fd3a8; }
+.budget-head b.warn { color: #df9e8f; }
+.budget-bars {
+  display: flex; align-items: flex-end; gap: 2px; height: 26px;
+  margin-top: 7px; padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+.budget-bars i {
+  flex: 1 1 auto; min-width: 2px; border-radius: 1px 1px 0 0;
+  background: linear-gradient(180deg, rgba(200, 167, 106, .85), rgba(200, 167, 106, .25));
+}
+.budget-note { margin-top: 5px; font-size: 9px; color: var(--muted-2); }

@@ -82,6 +82,10 @@ button, a, input, select, [tabindex] { -webkit-tap-highlight-color: transparent;
 .journey-steps li.done span { border-color: rgba(127, 199, 155, .55); color: var(--green); background: rgba(127, 199, 155, .10); font-size: 0; }
 .journey-steps li.done span::before { content: "✓"; font-size: 11px; }
 .journey-steps li.active button { background: rgba(210, 174, 107, .14); border-color: rgba(210, 174, 107, .5); color: var(--gold-2); box-shadow: inset 3px 0 0 var(--gold); }
+/* 选中态原来把 :hover 盖掉了，鼠标放上去毫无反应 */
+.journey-steps li.active button:hover { background: rgba(210, 174, 107, .24); border-color: rgba(210, 174, 107, .78); box-shadow: inset 3px 0 0 var(--gold-2); }
+.journey-steps li.active button:active,
+.journey-steps button:active { transform: translateY(1px); }
 .journey-steps li.active span { border-color: var(--gold); color: var(--gold-2); background: rgba(210, 174, 107, .12); }
 .guide-btn { flex: 0 0 auto; color: var(--cyan); border-color: rgba(126, 200, 214, .35); background: rgba(126, 200, 214, .05); }
 .guide-btn:hover { color: #c6f4fb; border-color: rgba(126, 200, 214, .65); }
