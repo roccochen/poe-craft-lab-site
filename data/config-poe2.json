@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "dataVersion": "0.9.5",
-  "version": "poe2-0.9.5",
-  "updatedAt": "2026-11-15T16:43:21.565Z",
+  "dataVersion": "0.10.0",
+  "version": "poe2-0.10.0",
+  "updatedAt": "2026-11-15T17:56:32.576Z",
   "source": "built-in",
   "prices": {
     "transmute": 0.1,
@@ -22,7 +22,23 @@
     "omen_dextral_erasure": 18,
     "omen_sinistral_exalt": 45,
     "omen_dextral_exalt": 45,
-    "omen_greater_exalt": 85
+    "omen_greater_exalt": 85,
+    "omen_greater_annulment": 30,
+    "omen_sinistral_coronation": 6,
+    "omen_dextral_coronation": 6,
+    "omen_sinistral_necromancy": 4,
+    "omen_dextral_necromancy": 4,
+    "omen_sinistral_crystallisation": 3,
+    "omen_dextral_crystallisation": 3,
+    "omen_sinistral_alchemy": 5,
+    "omen_dextral_alchemy": 5,
+    "omen_sinistral_annulment": 10,
+    "omen_dextral_annulment": 10,
+    "omen_light": 2,
+    "omen_corruption": 8,
+    "omen_the_blackblooded": 6,
+    "omen_the_sovereign": 6,
+    "omen_the_liege": 6
   },
   "essences": {
     "lesser_essence_of_the_body": 1,

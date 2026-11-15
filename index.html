@@ -225,12 +225,12 @@
         </div>
         <!-- 次要内容默认收起：备选方案、推荐顺序、整套估算 -->
         <details class="advisor-more" id="advisor-more">
-          <summary>其它选项 · 推荐顺序 · 整套估算</summary>
+          <summary>其它选项 · 推荐顺序 · 保守策略估算</summary>
           <div id="alt-recommendations"></div>
           <div class="advisor-sub">
             <div class="section-title"><h3>推荐顺序</h3><span class="section-note" id="plan-title">动态</span></div>
             <div class="plan-card" id="route-plan"></div>
-            <div class="route-actions"><button class="btn ghost wide" id="btn-sim-route" type="button">估算整套要花多少</button></div>
+            <div class="route-actions"><button class="btn ghost wide" id="btn-sim-route" type="button" title="用保守策略跑 24 次（最多 800 步 / 2500c），和求解器的期望值互相校验">跑保守策略全程模拟（约 2 秒）</button></div>
             <div class="route-stats" id="route-stats"></div>
           </div>
         </details>

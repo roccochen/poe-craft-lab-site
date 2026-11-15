@@ -114,6 +114,18 @@
   /* 预设里的档位是按「全局名次」写的，但不同底子能掉的档位不一样：
    * 头盔的生命最高只能掉到全局 T5，写成 T3 就永远不可达（新用户一进来就看到「目标不可达」）。
    * 这里把不可达的档位夹到该底子真正能掉的最好一档。 */
+  /* 目标的「适用性」校验必须放到词缀切片加载之后：
+   * 非头盔存档在 loadState 时还认不出目标词缀，直接过滤会把它们删掉（并写回存档）。
+   * 这里只做结构性清理，真正的可掉性交给 validateTargets()。 */
+  function sanitizeTargets(targets) {
+    return (Array.isArray(targets) ? targets : []).filter((t) => t && typeof t.modId === 'string' && t.modId);
+  }
+  function validateTargets() {
+    state.targets = sanitizeTargets(state.targets).filter((t) => E.getTargetDef(t.modId));
+    state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.item.influences, state.item.ilvl));
+    state.targets = normalizeTargetTiers(state.targets, state.baseId, state.item.ilvl);
+    return state.targets;
+  }
   function normalizeTargetTiers(targets, baseId, ilvl) {
     const base = E.getBase(baseId);
     if (!base) return targets || [];
@@ -152,7 +164,7 @@
       targetSearch: '',
       fossilSelection: [],
       harvestMode: 'reforge',
-      essenceTier: 7,
+      essenceTier: (D.essenceTiers && D.essenceTiers.length) ? D.essenceTiers[D.essenceTiers.length - 1].tier : 4,
       weaponFamily: 'all',
       settings: baseSettings(),
       routeStats: null,
@@ -205,9 +217,9 @@
       state.baseId = state.item.baseId;
       state.influences = state.item.influences.slice();
       state.slot = E.getBase(state.baseId).slot;
-      state.targets = (state.targets || []).filter((t) => E.getTargetDef(t.modId));
-      state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.item.influences, state.item.ilvl));
-      state.targets = normalizeTargetTiers(state.targets, state.baseId, state.item.ilvl);
+      /* 这里不能按词缀表过滤：非头盔槽位的词缀切片还没加载，
+       * 直接过滤会把存档里的目标清空。真正校验在 ensureSlotMods 之后。 */
+      state.targets = sanitizeTargets(state.targets);
       state.log = state.log || [];
       state.history = state.history || [];
       state.autoRunning = false;
@@ -239,23 +251,32 @@
   let toastSeq = 0;
 
   /* ------------------------------------------------------------------ save */
+  function saveNow() {
+    clearTimeout(saveTimer);
+    try {
+      const copy = {
+        baseId: state.baseId, ilvl: state.ilvl, influences: state.influences,
+        item: state.item, targets: state.targets, log: state.log.slice(0, 100),
+        spent: state.spent, attempts: state.attempts,
+        slot: state.slot, tab: state.tab, targetSide: state.targetSide,
+        settings: state.settings, history: state.history.slice(-20),
+        analysisNonce: state.analysisNonce, customTargets: state.customTargets,
+        configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null, selectedTool: state.selectedTool || null, donor: state.donor || null, donors: state.donors || [], view: state.view || 'gear',
+        collapsed: state.collapsed || {},
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
+    } catch (e) { /* 本地存储不可用时静默降级 */ }
+  }
   function save() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      try {
-        const copy = {
-          baseId: state.baseId, ilvl: state.ilvl, influences: state.influences,
-          item: state.item, targets: state.targets, log: state.log.slice(0, 100),
-          spent: state.spent, attempts: state.attempts,
-          slot: state.slot, tab: state.tab, targetSide: state.targetSide,
-          settings: state.settings, history: state.history.slice(-20),
-          analysisNonce: state.analysisNonce, customTargets: state.customTargets,
-          configMeta: state.configMeta, nextPullAt: state.nextPullAt || 0, pendingResult: state.pendingResult || null, selectedTool: state.selectedTool || null, donor: state.donor || null, donors: state.donors || [], view: state.view || 'gear',
-          collapsed: state.collapsed || {},
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
-      } catch (e) { /* 本地存储不可用时静默降级 */ }
-    }, 220);
+    saveTimer = setTimeout(saveNow, 220);
+  }
+  /* 撤销快照：所有会改动物品的路径都用同一份字段，避免漏掉 donor / 预兆状态 */
+  function snapshot() {
+    return {
+      item: E.clone(state.item), log: state.log.slice(), spent: state.spent, attempts: state.attempts,
+      donor: state.donor ? E.clone(state.donor) : null, donors: state.donors.map((d) => E.clone(d)),
+    };
   }
 
   /* ------------------------------------------------------------------ small ui utils */
@@ -434,6 +455,8 @@
   const VIEW_CTA = { gear: '去选底子 →', targets: '去设置目标 →', craft: '开始做装 →', log: '看记录 →' };
   function nextStep() {
     const ev = E.evaluate(state.item, currentTargets());
+    const analysis = state._analysis;
+    const expected = analysis && analysis.expected;
     if (state.pendingResult) return { text: '先确认这一步的实际结果，再继续', go: null };
     if (state.view === 'gear') {
       return state.baseId
@@ -448,6 +471,13 @@
     if (state.view === 'log') return { text: '这里能看每一步的消耗和词缀变化', go: null };
     if (!state.targets.length) return { text: '还没有目标：先去设置 2–3 条', go: 'targets' };
     if (ev.complete) return { text: '目标齐了：检查数值，满意就可以停', go: 'log' };
+    if (state.item.corrupted) return { text: '物品已腐化：普通通货 / 精华 / 符文都不能再用，只能重新做一件', go: null };
+    if (expected && expected.unreachable) {
+      return { text: '当前目标不可达：放宽档位或换能掉这些词缀的底子', go: 'targets' };
+    }
+    if (analysis && analysis.recommendations && !analysis.recommendations.length) {
+      return { text: '当前没有可执行的建议：检查目标与物品状态', go: 'targets' };
+    }
     if (state.item.rarity === 'normal') return { text: '先选一种起手通货，或按右侧首选做第一步', go: null };
     return { text: '按右侧「先做这个」执行一步', go: null };
   }
@@ -649,7 +679,8 @@
       state.slot = base.slot;
       state.ilvl = Math.max(state.ilvl, base.ilvl);
       state.item = E.createItem(baseId, { ilvl: state.ilvl, influences: state.influences });
-      state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.influences, state.ilvl));
+      // 换底子后档位阶梯变了，必须重新校验 / 夹回可掉的档位
+      validateTargets();
       state.fossilSelection = [];
       resetProgress();
       $('#ilvl-input').value = state.ilvl;
@@ -769,10 +800,18 @@
       const isEssence = !!def.isEssence;
       const chosenTier = !isBench && !isEssence && t.tier ? (def.tiers || []).find((tier) => E.tierRank(def, tier) === Number(t.tier)) : null;
       const unavailable = !!(chosenTier && chosenTier.ilvl > state.ilvl);
+      const ladder = !isBench && !isEssence ? E.baseTierLadder(def, E.getBase(state.baseId)) : [];
+      /* 存档里的全组档位可能不在当前底子的阶梯里（换过底子 / 旧存档）。
+       * 没有回退选项时浏览器会默认选第一项，显示值就和状态对不上了。 */
+      const tierMissing = !isBench && !isEssence && ladder.length
+        && !ladder.some((x) => x.rankGlobal === Number(t.tier));
       const tierOptions = isEssence
         ? '<option>精华</option>'
         : !isBench
-        ? E.baseTierLadder(def, E.getBase(state.baseId)).map((x) => {
+        ? (tierMissing
+          ? '<option value="' + Number(t.tier) + '" selected>当前档位（该部位不适用）</option>'
+          : '')
+          + ladder.map((x) => {
           // 值仍存全组档位（兼容已有存档），显示用该部位的本地下标：
           // 头盔上 +生命的最高档在游戏里是 T1，在全组里是 T5。
           const avail = x.ilvl <= state.ilvl;
@@ -1439,7 +1478,8 @@
         const reason = typeof E.essenceAvailability === 'function'
           ? E.essenceAvailability(state.item, e)
           : (state.item.rarity === 'magic' ? '该版本精华不能用于魔法物品。' : null);
-        return '<button type="button" class="essence-card ' + (reason ? 'unavailable' : '') + '" data-essence="' + e.id + '" style="--ec:' + e.color + '" title="' + esc(reason || preview) + '">' +
+        return '<button type="button" class="essence-card ' + (reason ? 'unavailable' : '') + '" data-essence="' + e.id + '" style="--ec:' + e.color + '" ' +
+          (reason ? 'title="' + esc(reason) + '" aria-disabled="true"' : 'title="' + esc(preview) + '"') + '>' +
           '<span class="essence-dot"></span>' +
           '<span class="essence-info"><span class="essence-name"><b>' + esc(e.tierName + e.name) + '</b> 精华</span>' +
           '<span class="essence-mod">' + esc(preview) + '</span></span>' +
@@ -1539,21 +1579,52 @@
       return;
     }
     const doneCount = omens.filter((o) => o.implemented !== false).length;
-    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">预兆会改变下一条通货的结果；这里把「预兆 + 对应通货」组合成一步，方便直接推演。'
-      + '已建模 ' + doneCount + ' / ' + omens.length + ' 条，其余仅作参考、不可执行。</div>' +
+    const armed = (state.item.meta && state.item.meta.omens) || [];
+    /* 能一步组合执行的预兆：有对应通货、且那条通货当前可用。
+     * 精华要先选具体哪一颗，只能在「精华」面板里先激活再用。 */
+    const COMBO_CURRENCY = { exalted: 1, chaos: 1, annulment: 1, regal: 1, alchemy: 1, desecrate: 1, vaal: 1, divine: 1 };
+    const omenTool = (omen) => {
+      const cur = omen.appliesTo;
+      if (omen.implemented !== false && COMBO_CURRENCY[cur]
+        && !E.actionAvailability(state.item, cur)
+        && E.actionCost({ type: 'omen_exec', omenId: omen.id, currency: cur }, prices) > 0) {
+        return { action: { type: 'omen_exec', omenId: omen.id, currency: cur }, combo: true };
+      }
+      return { action: { type: 'omen', omenId: omen.id }, combo: false };
+    };
+    const armedHtml = armed.length
+      ? '<div class="manual-note" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">' +
+        '<span>已激活：' + armed.map((o) => esc(o.name)).join('、') + '</span>' +
+        '<button class="btn tiny ghost" type="button" id="omen-cancel">取消激活</button></div>'
+      : '';
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">预兆会改变下一条通货的结果。可直接点「预兆 + 对应通货」一步推演；也可以先激活，再手动使用对应通货。'
+      + '已建模 ' + doneCount + ' / ' + omens.length + ' 条，其余仅作参考、不可执行。</div>' + armedHtml +
       '<div class="action-grid">' + omens.map((omen) => {
         const reason = E.omenAvailability(state.item, omen.id);
-        const cost = E.actionCost({ type: 'omen', omenId: omen.id }, prices);
-        return '<button type="button" class="action-btn ' + (reason ? 'unavailable' : '') + '" data-omen="' + omen.id + '" ' + (reason ? 'title="' + esc(reason) + '"' : '') + '>' +
+        const tool = omenTool(omen);
+        const cost = E.actionCost(tool.action, prices);
+        const tag = tool.combo ? '预兆 + 通货' : '先激活';
+        return '<button type="button" class="action-btn ' + (reason ? 'unavailable' : '') + '" data-omen="' + omen.id + '" ' +
+          (reason ? 'title="' + esc(reason) + '" aria-disabled="true"' : '') + '>' +
           '<span class="orb" style="--orb:' + omen.color + '">兆</span>' +
-          '<span class="action-info"><span class="action-name">' + esc(omen.name) + '</span><span class="action-desc">' + esc(omen.desc) + '</span></span>' +
+          '<span class="action-info"><span class="action-name">' + esc(omen.name) + '<span class="phase-tag">' + tag + '</span></span><span class="action-desc">' + esc(omen.desc) + '</span>' +
+          (reason ? '<span class="action-reason">' + esc(reason) + '</span>' : '') + '</span>' +
           '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
       }).join('') + '</div>';
+    const cancel = $('#omen-cancel');
+    if (cancel) cancel.onclick = () => performAction({ type: 'omen_clear' });
     $$('#action-body [data-omen]').forEach((b) => {
       b.onclick = () => {
-        const reason = E.omenAvailability(state.item, b.dataset.omen);
+        const omen = omens.find((o) => o.id === b.dataset.omen);
+        if (!omen) return;
+        const reason = E.omenAvailability(state.item, omen.id);
         if (reason) { toast(reason, 'error'); return; }
-        chooseTool({ type: 'omen', omenId: b.dataset.omen });
+        const tool = omenTool(omen);
+        if (tool.action.type === 'omen_exec') {
+          const curReason = E.actionAvailability(state.item, tool.action.currency);
+          if (curReason) { toast(curReason, 'error'); return; }
+        }
+        chooseTool(tool.action);
       };
     });
   }
@@ -1608,7 +1679,7 @@
       '<button class="modal-close" data-close type="button">×</button></div>' +
       '<div class="modal-body"><div class="desecrate-list">' + cards + '</div>' +
       '<div class="modal-note">深渊词缀会占用一个前缀 / 后缀位，加入后仍可继续做装。</div></div>' +
-      '<div class="modal-foot"><button class="btn ghost" data-close type="button">放弃这一步</button></div>';
+      '<div class="modal-foot"><button class="btn ghost" data-close type="button">稍后再选（保存之骨已消耗）</button></div>';
     openModal(html);
     $$('#modal-root [data-close]').forEach((b) => { b.onclick = () => { state.desecrateChoices = null; closeModal(); }; });
     $$('#modal-root [data-desecrate-pick]').forEach((b) => {
@@ -1949,10 +2020,7 @@
     const before = E.clone(state.item);
     const res = E.applyAction(before, action, { prices: priceOverrides(), targets: currentTargets().map((t) => t.modId) });
     if (res.error) { toast(res.error, 'error'); return false; }
-    state.history.push({
-      item: before, log: state.log.slice(), spent: state.spent, attempts: state.attempts,
-      donor: state.donor ? E.clone(state.donor) : null, donors: state.donors.map((d) => E.clone(d)),
-    });
+    state.history.push(snapshot());
     if (state.history.length > 40) state.history.shift();
     state.item = res.item;
     if (action.type === 'awakener' || action.type === 'recombine') { state.donors = state.donors.filter((d) => !state.donor || d.savedAt !== state.donor.savedAt); state.donor = null; }
@@ -2072,6 +2140,9 @@
     state.item = E.clone(pending.before);
     state.pendingResult = null;
     state.routeStats = null;
+    /* 这一步实际没发生：把「模拟改变了词缀」的那条日志换成「没有变化」，
+     * 否则记录里会留下一次并未发生的词缀变化。撤销仍然回到操作前并退还这一步花费。 */
+    if (pending.logId != null) state.log = state.log.filter((l) => l.id !== pending.logId);
     const beforeEval = E.evaluate(state.item, currentTargets());
     state.log.unshift({
       id: Date.now() + Math.random(), t: Date.now(), title: '实际结果',
@@ -2195,12 +2266,12 @@
       '<div class="plan-strip-head">' +
       '<span class="plan-stat' + (e.lowerBound ? ' warn' : '') + '"><i>剩余期望</i><b>' + etc + '</b></span>' +
       (e.lowerBound
-        ? '<span class="plan-stat warn"><i>完成概率</i><b>极低</b></span>'
+        ? '<span class="plan-stat warn"><i>完成概率</i><b>未收敛</b></span>'
         : '<span class="plan-stat"><i>完成概率</i><b>' + (e.pSuccess * 100).toFixed(0) + '%</b></span>') +
       '<span class="plan-stat"><i>求解状态</i><b>' + (e.states || 0) + '</b></span>' +
       '</div>' +
       (e.lowerBound
-        ? '<div class="plan-branches">目标档位过严：真实期望比这个下界还高，建议放宽一条档位或换目标。</div>'
+        ? '<div class="plan-branches">目标档位过严：值迭代没收敛，上面是期望成本的下界；完成概率要等收敛才有意义。</div>'
         : '') +
       (branchHtml ? '<div class="plan-branches">最强分支：' + branchHtml + '</div>' : '');
   }
@@ -2210,7 +2281,8 @@
     const el = $('#budget-box');
     if (!el) return;
     const e = analysis && analysis.expected;
-    if (!e || !e.budget || e.unreachable) { el.hidden = true; el.innerHTML = ''; return; }
+    // 未收敛时预算曲线建立在错误的值函数上，宁可不显示
+    if (!e || !e.budget || e.unreachable || e.lowerBound) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
     const b = e.budget;
     const budget = Number(state.settings.budget) > 0 ? Number(state.settings.budget) : 100;
@@ -2226,7 +2298,9 @@
       '<div class="budget-note">' +
       (b.minBudget90 != null
         ? '90% 把握至少 ' + A.fmtCost(b.minBudget90) + ' · 一半机会 ' + A.fmtCost(b.minBudget50) + ' · 平均 ' + A.fmtCost(b.etc)
-        : '预算再多也做不完') +
+        : b.minBudget50 != null
+          ? '一半机会 ' + A.fmtCost(b.minBudget50) + ' · 90% 把握超过估算上限（' + A.fmtCost(b.maxBudget) + 'c+） · 平均 ' + A.fmtCost(b.etc)
+          : '在这个预算范围内没能算到 50%：实际门槛高于 ' + A.fmtCost(b.maxBudget) + 'c') +
       '</div>';
     const inp = $('#budget-input');
     if (inp) {
@@ -2365,10 +2439,11 @@
     if (rs) {
       elStats.classList.add('show');
       elStats.innerHTML =
-        '<div class="rs-item"><span>成功率</span><b>' + pctText(rs.successRate) + '</b></div>' +
+        '<div class="rs-item"><span>' + (rs.maxSteps || 800) + ' 步内成功率</span><b>' + pctText(rs.successRate) + '</b></div>' +
         '<div class="rs-item"><span>平均花费</span><b>' + A.fmtCost(rs.avgCost) + '</b></div>' +
         '<div class="rs-item"><span>成功时花费</span><b>' + A.fmtCost(rs.avgWinCost) + '</b></div>' +
-        '<div class="rs-item"><span>平均步数</span><b>' + rs.avgSteps.toFixed(1) + '</b></div>';
+        '<div class="rs-item"><span>平均步数</span><b>' + rs.avgSteps.toFixed(1) + '</b></div>' +
+        '<div class="rs-note">24 次保守策略模拟（最多 ' + (rs.maxSteps || 800) + ' 步 / ' + A.fmtCost(rs.budget || 2500) + '）；完整期望看上方「剩余期望 / 预算模式」。</div>';
     } else {
       elStats.classList.remove('show');
       elStats.innerHTML = '';
@@ -2568,7 +2643,7 @@
     const err = validateDraft(draft);
     if (err) { toast(err, 'error'); return; }
     const before = E.clone(state.item);
-    state.history.push({ item: before, log: state.log.slice(), spent: state.spent, attempts: state.attempts });
+    state.history.push(snapshot());
     if (state.history.length > 40) state.history.shift();
     state.item = E.clone(draft);
     state.pendingResult = null;
@@ -2578,6 +2653,8 @@
     state.baseId = state.item.baseId;
     state.ilvl = state.item.ilvl;
     state.influences = state.item.influences.slice();
+    state.slot = E.getBase(state.baseId).slot;
+    validateTargets();
     const after = state.item;
     const entry = {
       id: Date.now() + Math.random(), t: Date.now(), title: '录入实际结果',
@@ -2837,7 +2914,7 @@
     const note = isLocal
       ? '词缀、底子与逐档权重来自本地游戏文件导出（官方 Mods / BaseItemTypes 表）。'
         + '加词缀与混沌 / 剥离的概率按官方权重表解析计算，标「精确」；'
-        + '点金 / 瓦尔 / 亵渎 / 预兆仍是抽样，标「估计」。档位显示为该部位的本地下标，存档里存全组下标。'
+        + '点金 / 瓦尔 / 亵渎等复杂动作仍是抽样，标「估计」；已建模的预兆组合与精华保底走解析展开。档位显示为该部位的本地下标，存档里存全组下标。'
       : '词缀与底子来自社区 wiki（CC BY-NC-SA 3.0，非商业、需署名）；概率只用于比较策略，不等于官方掉率。';
     return '<details class="config-section" open><summary>数据来源 <small>只读</small></summary><div class="config-section-body">'
       + '<div class="read-grid">' + rows.join('') + '</div>'
@@ -2964,7 +3041,7 @@
   /* ------------------------------------------------------------------ export / import */
   function exportState() {
     const data = {
-      app: 'poe1-craft-lab', version: 1, savedAt: new Date().toISOString(),
+      app: 'poe2-craft-lab', version: 1, savedAt: new Date().toISOString(),
       baseId: state.baseId, ilvl: state.ilvl, influences: state.influences,
       item: state.item, donor: state.donor || null, donors: state.donors || [], targets: state.targets, log: state.log,
       spent: state.spent, attempts: state.attempts, settings: state.settings,
@@ -2975,7 +3052,7 @@
     const d = new Date();
     const stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') +
       '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
-    a.download = 'poe1-craft-' + stamp + '.json';
+    a.download = 'poe2-craft-' + stamp + '.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast('已导出当前做装方案。', 'success');
@@ -2988,35 +3065,39 @@
       if (!parsed || !parsed.item || !E.getBase(parsed.item.baseId)) {
         toast('导入失败：缺少有效的物品数据。', 'error'); return;
       }
-      state.baseId = parsed.item.baseId;
-      state.ilvl = parsed.item.ilvl || E.getBase(state.baseId).ilvl;
-      state.influences = parsed.item.influences || [];
-      state.item = parsed.item;
-      state.item.meta = state.item.meta || { multimod: false };
-      if (typeof E.syncMetaFlags === 'function') E.syncMetaFlags(state.item);
-      state.item.influences = state.influences.slice();
-      state.item.affixes = state.item.affixes || [];
-      state.item.ilvl = state.item.ilvl || state.ilvl;
-      E.syncUid(state.item);
-      state.targets = (parsed.targets || []).filter((t) => E.getTargetDef(t.modId));
-      state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.influences, state.ilvl));
-      state.log = parsed.log || [];
-      state.donors = (Array.isArray(parsed.donors) ? parsed.donors : (parsed.donor ? [parsed.donor] : []))
-        .filter((d) => d && d.baseId && E.getBase(d.baseId)).slice(-8).map((d, i) => { const copy = E.clone(d); copy.savedAt = copy.savedAt || (Date.now() + i); return copy; });
-      state.donor = state.donors[state.donors.length - 1] || null;
-      state.spent = parsed.spent || 0;
-      state.attempts = parsed.attempts || 0;
-      state.settings = Object.assign(baseSettings(), parsed.settings || {});
-      state.settings.prices = Object.assign(baseSettings().prices, (parsed.settings && parsed.settings.prices) || {});
-      state.slot = E.getBase(state.baseId).slot;
-      state.history = [];
-      state.routeStats = null;
-      state.pendingResult = null;
-      state.selectedTool = null;
-      state.fossilSelection = [];
-      $('#ilvl-input').value = state.ilvl;
-      save(); renderAll();
-      toast('导入成功：' + E.getBase(state.baseId).name, 'success');
+      /* 导入的可能是别的槽位：先把那份词缀切片取来，再校验目标，
+       * 否则非头盔方案的目标会被当成「未知词缀」丢掉。 */
+      ensureSlotMods(E.getBase(parsed.item.baseId).slot).then(() => {
+        state.baseId = parsed.item.baseId;
+        state.ilvl = parsed.item.ilvl || E.getBase(state.baseId).ilvl;
+        state.influences = parsed.item.influences || [];
+        state.item = parsed.item;
+        state.item.meta = state.item.meta || { multimod: false };
+        if (typeof E.syncMetaFlags === 'function') E.syncMetaFlags(state.item);
+        state.item.influences = state.influences.slice();
+        state.item.affixes = state.item.affixes || [];
+        state.item.ilvl = state.item.ilvl || state.ilvl;
+        E.syncUid(state.item);
+        state.targets = sanitizeTargets(parsed.targets);
+        state.log = parsed.log || [];
+        state.donors = (Array.isArray(parsed.donors) ? parsed.donors : (parsed.donor ? [parsed.donor] : []))
+          .filter((d) => d && d.baseId && E.getBase(d.baseId)).slice(-8).map((d, i) => { const copy = E.clone(d); copy.savedAt = copy.savedAt || (Date.now() + i); return copy; });
+        state.donor = state.donors[state.donors.length - 1] || null;
+        state.spent = parsed.spent || 0;
+        state.attempts = parsed.attempts || 0;
+        state.settings = Object.assign(baseSettings(), parsed.settings || {});
+        state.settings.prices = Object.assign(baseSettings().prices, (parsed.settings && parsed.settings.prices) || {});
+        state.slot = E.getBase(state.baseId).slot;
+        state.history = [];
+        state.routeStats = null;
+        state.pendingResult = null;
+        state.selectedTool = null;
+        state.fossilSelection = [];
+        validateTargets();
+        $('#ilvl-input').value = state.ilvl;
+        save(); renderAll();
+        toast('导入成功：' + E.getBase(state.baseId).name, 'success');
+      });
     }).catch(() => toast('读取文件失败。', 'error'));
   }
 
@@ -3031,7 +3112,7 @@
       let res;
       try {
         res = A.simulateRoute(state.item, currentTargets(), {
-          runs: 90, maxSteps: 40, budget: 2500, prices: priceOverrides(), seed: 424242,
+          runs: 24, maxSteps: 800, budget: 2500, prices: priceOverrides(), seed: 424242,
         });
       } catch (e) {
         console.error(e);
@@ -3044,7 +3125,7 @@
       state.routeStats = res;
       save();
       renderAdvisor();
-      toast('整套估算完成：成功率 ' + pctText(res.successRate) + '。', 'success', 3000);
+      toast('保守策略估算完成：' + res.maxSteps + ' 步内成功率 ' + pctText(res.successRate) + '。', 'success', 3600);
     }, 40);
   }
 
@@ -3095,9 +3176,18 @@
     });
     const itemCard = $('#item-card');
     if (itemCard) {
+      // 装备卡本身就是「使用已选通货」的按钮：补上键盘可达性
+      itemCard.setAttribute('role', 'button');
+      itemCard.setAttribute('tabindex', '0');
       itemCard.onclick = (e) => {
         if (e.target.closest('button, a, input, select')) return;
         if (state.selectedTool) useSelectedTool();
+      };
+      itemCard.onkeydown = (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!state.selectedTool) return;
+        e.preventDefault();
+        useSelectedTool();
       };
     }
     $('#base-search').addEventListener('input', (e) => { state.baseSearch = e.target.value; renderBases(); });
@@ -3110,7 +3200,7 @@
       state.item.ilvl = v;
       e.target.value = v;
       state.routeStats = null;
-      state.targets = state.targets.filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.influences, v));
+      validateTargets();
       save(); renderAll();
       toast('物品等级已设为 ' + v + '。');
     });
@@ -3163,7 +3253,10 @@
         e.preventDefault(); undo();
       }
     });
-    window.addEventListener('beforeunload', save);
+    // 防抖的 save() 在 unload 里不会触发，离开页面必须同步落盘
+    window.addEventListener('beforeunload', saveNow);
+    window.addEventListener('pagehide', saveNow);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   }
   function fallbackCopy(text, done) {
     const ta = document.createElement('textarea');
@@ -3225,6 +3318,8 @@
       ? ensureSoulCores()
       : Promise.resolve(false);
     Promise.all([slotReady, soulReady]).then(() => {
+      // 词缀切片到齐后再校验目标（否则非头盔存档的目标会被误删）
+      validateTargets();
       renderAll();
       if (REQUESTED_GAME === 'poe1') {
         try { history.replaceState(null, '', location.pathname + '?game=poe2'); } catch (e) { /* file:// 下忽略 */ }

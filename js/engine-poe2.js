@@ -642,6 +642,7 @@
 
   /* 预兆组合（定向崇高 / 高阶崇高 / 定向抹除 / 削切）的精确结果 */
   function exactOmenOutcomes(item, action, targets, opts) {
+    if (!item || item.corrupted) return null;
     const omen = (D.omens || []).find((o) => o.id === action.omenId);
     if (!omen) return null;
     if (hasArmedOmenFor(item, action.currency)) return null;
@@ -690,6 +691,7 @@
 
   /* 精华：低阶 = 确定性加一条；完美 = 先随机删一条再加保底 */
   function exactEssenceOutcomes(item, action, targets, opts) {
+    if (!item || item.corrupted) return null;
     const ess = essenceById[action.essenceId] || (D.essences || []).find((e) => e.id === action.essenceId);
     if (!ess) return null;
     const ev = evaluate(item, targets);
@@ -702,7 +704,7 @@
       return { exact: true, type: 'essence', pImprove: 0, pComplete: 0, pRegress: 0, baseMatched: ev.matchedCount, targetCount: K, dist: [{ matched: ev.matchedCount, prob: 1 }] };
     }
     if (!ess.perfect) {
-      if (item.rarity !== 'magic' || !canAdd(item, side)) return null;
+      if (item.rarity !== 'magic' || !canAddWithRarity(item, side, 'rare')) return null;
       const post = withFabricatedAffix(item, side, def.group, def.modId, 1, 1, true);
       const pe = evaluate(post, targets);
       return {
@@ -716,18 +718,18 @@
       };
     }
     if (item.rarity !== 'rare') return null;
-    const removable = item.affixes.filter((a) => !a.fractured);
+    /* 与 applyAction 共用同一份移除候选：该侧已满时只能从同侧删，
+     * 否则完美精华会把单侧堆到 4 条。结晶预兆也会限制移除侧。 */
+    const essOmen = armedOmens(item).find((o) => o.appliesTo === 'essence');
+    const removable = essenceRemovalPool(item, side, essOmen && essOmen.effect);
     if (!removable.length) return null;
     const dist = new Map();
     const bump = (m, p) => { if (p > 0) dist.set(m, (dist.get(m) || 0) + p); };
     const per = 1 / removable.length;
     for (const victim of removable) {
       const post = withoutAffix(item, victim);
-      const pe = evaluate(post, targets);
-      if (!canAdd(post, side)) { bump(pe.matchedCount, per); continue; }
       const post2 = withFabricatedAffix(post, side, def.group, def.modId, 1, 1, true);
-      const pe2 = evaluate(post2, targets);
-      bump(pe2.matchedCount, per);
+      bump(evaluate(post2, targets).matchedCount, per);
     }
     return exactAggregate(ev.matchedCount, K, dist, 'essence');
   }
@@ -996,12 +998,40 @@
 
   /* 已激活的预兆：作用于下一次对应通货后消耗 */
   function armedOmens(item) { return (item && item.meta && item.meta.omens) || []; }
-  function takeArmedOmen(item, currency) {
+  /* wantId 优先：omen_exec 必须消费它刚挂上的那一条，
+   * 否则「先激活 A，再执行 B 组合」会消费 A、把 B 留成新激活（旧 bug）。 */
+  function takeArmedOmen(item, currency, wantId) {
     const list = armedOmens(item);
-    const idx = list.findIndex((o) => o.appliesTo === currency);
+    let idx = -1;
+    if (wantId) idx = list.findIndex((o) => o.id === wantId);
+    if (idx === -1) idx = list.findIndex((o) => o.appliesTo === currency);
     if (idx === -1) return null;
     const [om] = list.splice(idx, 1);
     return om;
+  }
+  /* 加词缀前的空位判定，可以指定「加完之后」的稀有度：
+   * 精华会把魔法升稀有，所以要看稀有上限（3），不能看魔法的 1。 */
+  function canAddWithRarity(item, side, rarity) {
+    if (side !== 'prefix' && side !== 'suffix') return false;
+    if (rarity !== 'magic' && rarity !== 'rare') return false;
+    const cap = rarity === 'magic' ? 1 : 3;
+    if (sides(item, side).length >= cap) return false;
+    if (rarity === 'magic' && item.affixes.length >= 2) return false;
+    return true;
+  }
+  /* 完美精华的「随机移除 1 条」候选：
+   *  - 预兆（结晶）可以把移除限制在某一侧；
+   *  - 如果保底词缀那一侧已经 3 条，只能从同侧移除，否则加完会超上限。 */
+  function essenceRemovalPool(item, side, omenEffect) {
+    let pool = item.affixes.filter((a) => !a.fractured);
+    if (omenEffect === 'remove_prefix_only') pool = pool.filter((a) => a.affix === 'prefix');
+    else if (omenEffect === 'remove_suffix_only') pool = pool.filter((a) => a.affix === 'suffix');
+    if (!pool.length) return [];
+    if (side && sides(item, side).length >= 3) {
+      const same = pool.filter((a) => a.affix === side);
+      return same.length ? same : [];
+    }
+    return pool;
   }
   function runeEligibleOnBase(rune, base) {
     if (!rune || !base) return false;
@@ -1161,6 +1191,21 @@
   function mergePrices(overrides) {
     return Object.assign({}, D.prices, overrides || {});
   }
+  /* 预兆单价：先看价格表（可由后端配置覆盖），再看数据里的默认值。
+   * 旧代码只读 om.cost，导致配置里改预兆价格永远不生效。 */
+  function omenCost(omen, prices) {
+    if (!omen) return 0;
+    const p = prices && prices[omen.id];
+    if (p != null && Number.isFinite(Number(p))) return Number(p);
+    return Number(omen.cost) || 0;
+  }
+  const CURRENCY_NAME = {
+    transmute: '蜕变石', augmentation: '增幅石', regal: '富豪石', alchemy: '点金石',
+    chaos: '混沌石', exalted: '崇高石', annulment: '剥离石', divine: '神圣石',
+    vaal: '瓦尔宝珠', desecrate: '保存之骨', essence: '精华', chance: '机会石',
+    whetstone: '磨刀石', scrap: '护甲片',
+  };
+  function currencyName(id) { return CURRENCY_NAME[id] || id || '对应操作'; }
   function actionCost(action, prices) {
     prices = mergePrices(prices);
     switch (action.type) {
@@ -1182,7 +1227,6 @@
       case 'rune_clear': return 0;
       case 'desecrate': return prices.desecrate;
       case 'desecrate_pick': return 0;
-      case 'vaal': return prices.vaal;
       case 'essence': {
         const e = essenceById[action.essenceId];
         return e ? e.cost : 0;
@@ -1190,14 +1234,15 @@
       case 'omen_clear': return 0;
       case 'omen_exec': {
         const om = (D.omens || []).find((x) => x.id === action.omenId);
-        const inner = action.currency ? actionCost({ type: action.currency }, prices) : 0;
-        return (om ? Number(om.cost) || 0 : 0) + inner;
+        const inner = action.currency
+          ? actionCost({ type: action.currency, essenceId: action.essenceId, runeId: action.runeId }, prices)
+          : 0;
+        return omenCost(om, prices) + inner;
       }
       case 'omen': {
         const omen = (D.omens || []).find((x) => x.id === action.omenId);
-        if (!omen || omen.cost == null) return 0;
         // 语义已改为「激活预兆，作用于下一次通货」：这里只收预兆价格
-        return omen.cost;
+        return omenCost(omen, prices);
       }
       default: return 0;
     }
@@ -1233,7 +1278,8 @@
       const tier = def.tiers.find((t) => tierRank(def, t) === a.tierRank);
       if (!tier) return;
       a.values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
-      a.text = formatText(def.text, a.values);
+      // 模板与 makeAffix 一致：优先该档的繁中模板，别退回组级英文模板
+      a.text = formatText(pickTemplate(tier) || def.text, a.values);
     });
   }
 
@@ -1285,9 +1331,12 @@
       case 'regal': {
         if (next.rarity !== 'magic') return fail('富豪石只能用于魔法物品。');
         next.rarity = 'rare';
-        const side = chooseSide(next, rng);
-        if (!addRandomAffix(next, side, rng, {})) return fail('当前底子没有可用的词缀可添加。');
-        message = '使用富豪石：魔法物品升级为稀有物品。';
+        const rOmen = takeArmedOmen(next, 'regal');
+        let rSide = chooseSide(next, rng);
+        if (rOmen && rOmen.effect === 'add_prefix' && canAdd(next, 'prefix')) rSide = 'prefix';
+        if (rOmen && rOmen.effect === 'add_suffix' && canAdd(next, 'suffix')) rSide = 'suffix';
+        if (!addRandomAffix(next, rSide, rng, {})) return fail('当前底子没有可用的词缀可添加。');
+        message = '使用富豪石' + (rOmen ? '（预兆：' + rOmen.name + '）' : '') + '：魔法物品升级为稀有物品。';
         break;
       }
       case 'alchemy': {
@@ -1295,12 +1344,24 @@
         const alcOmen = takeArmedOmen(next, 'alchemy');
         next.rarity = 'rare';
         clearForReroll(next, []);
-        fillTo(next, 4, rng, {});
-        if (alcOmen && (alcOmen.effect === 'alchemy_max_prefix' || alcOmen.effect === 'alchemy_max_suffix')) {
-          const side = alcOmen.effect === 'alchemy_max_prefix' ? 'prefix' : 'suffix';
-          while (canAdd(next, side)) {
-            if (!addRandomAffix(next, side, rng, {})) break;
+        /* 左右炼金预兆：4 条词缀总额不变，只把落侧改成「该侧最多」。
+         * 旧实现是先随机补到 4 条、再往目标侧补满，会白送 2 条词缀。 */
+        const maxSide = alcOmen && alcOmen.effect === 'alchemy_max_prefix' ? 'prefix'
+          : alcOmen && alcOmen.effect === 'alchemy_max_suffix' ? 'suffix' : null;
+        if (maxSide) {
+          const other = maxSide === 'prefix' ? 'suffix' : 'prefix';
+          while (next.affixes.length < 4 && canAdd(next, maxSide)) {
+            if (!addRandomAffix(next, maxSide, rng, {})) break;
           }
+          while (next.affixes.length < 4 && canAdd(next, other)) {
+            if (!addRandomAffix(next, other, rng, {})) break;
+          }
+          while (next.affixes.length < 4) {
+            const side = chooseSide(next, rng);
+            if (!side || !addRandomAffix(next, side, rng, {})) break;
+          }
+        } else {
+          fillTo(next, 4, rng, {});
         }
         message = '使用点金石' + (alcOmen ? '（预兆：' + alcOmen.name + '）' : '') + '：普通 / 魔法物品变为稀有物品。';
         break;
@@ -1402,19 +1463,21 @@
         if (blocked) return fail(blocked);
         const eff = essenceDescForItem(next, e);
         if (!eff) return fail('该精华不支持此物品。');
-        const removable = next.affixes.filter((a) => !a.fractured);
         let removedNote = '';
         // 完美档：先移除 1 条随机词缀，再加保底
         if (e.perfect || e.tier === 4) {
           if (next.rarity !== 'rare') return fail('完美精华只能用于稀有物品。');
-          if (!removable.length) return fail('没有可移除的词缀。');
-          {
-            const victim = removable[randInt(rng, 0, removable.length - 1)];
-            next.affixes = next.affixes.filter((a) => a !== victim);
-            removedNote = '移除「' + victim.text.split('\n')[0] + '」并';
-          }
+          /* 结晶预兆（左右）把「随机移除」限制到某一侧；被升级/保底的那一侧
+           * 已经 3 条时只能从同侧删，否则删除完也放不进去。 */
+          const essOmen = takeArmedOmen(next, 'essence');
+          const pool = essenceRemovalPool(next, eff.affix, essOmen && essOmen.effect);
+          if (!pool.length) return fail('没有可移除的词缀（该侧可能被破裂词缀占满）。');
+          const victim = pool[randInt(rng, 0, pool.length - 1)];
+          next.affixes = next.affixes.filter((a) => a !== victim);
+          removedNote = '移除「' + victim.text.split('\n')[0] + '」并';
         } else {
           if (next.rarity !== 'magic') return fail('该档精华只能用于魔法物品。');
+          if (!canAddWithRarity(next, eff.affix, 'rare')) return fail('稀有词缀位已满。');
         }
         next.rarity = 'rare';
         const values = (eff.v || []).map((r) => roundVal(randFloat(rng, r[0], r[1])));
@@ -1509,23 +1572,22 @@
       case 'desecrate': {
         const blocked = desecrateAvailability(next);
         if (blocked) return fail(blocked);
-        // 词缀满时先移除 1 条非破裂词缀腾位（游戏里也是先消耗掉一条）
-        if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) {
-          const removable = next.affixes.filter((a) => !a.fractured);
-          if (!removable.length) return fail('词缀已满且没有可移除的词缀');
-          const victim = removable[randInt(rng, 0, removable.length - 1)];
-          next.affixes = next.affixes.filter((a) => a !== victim);
-          message = '保存之骨：先移除了「' + victim.text.split('\n')[0] + '」，';
-        } else {
-          message = '保存之骨：';
-        }
+        /* 揭露阶段不改物品：移除词缀留到 desecrate_pick。
+         * 旧实现在弹选择框之前就先删掉一条，玩家取消弹窗就白丢一条词缀。 */
+        message = '保存之骨：';
         const desOmen = takeArmedOmen(next, 'desecrate');
-        let choices = desecrateChoices(next, rng, 3);
-        if (desOmen?.effect === 'desecrate_prefix_only') choices = choices.filter((m) => m.affix === 'prefix');
-        if (desOmen?.effect === 'desecrate_suffix_only') choices = choices.filter((m) => m.affix === 'suffix');
-        if (desOmen?.effect === 'desecrate_guaranteed_kurgal') choices = choices.filter((m) => /kurgal/i.test(m.id));
-        if (desOmen?.effect === 'desecrate_guaranteed_ulaman') choices = choices.filter((m) => /ulaman/i.test(m.id));
-        if (desOmen?.effect === 'desecrate_guaranteed_amanamu') choices = choices.filter((m) => /amanamu/i.test(m.id));
+        const omenSide = desOmen?.effect === 'desecrate_prefix_only' ? 'prefix'
+          : desOmen?.effect === 'desecrate_suffix_only' ? 'suffix' : null;
+        const lord = desOmen?.effect === 'desecrate_guaranteed_kurgal' ? 'kurgal'
+          : desOmen?.effect === 'desecrate_guaranteed_ulaman' ? 'ulaman'
+          : desOmen?.effect === 'desecrate_guaranteed_amanamu' ? 'amanamu' : null;
+        /* 预兆把揭露限制在某一侧，但该侧已经 3 条且全是破裂词缀时没地方放，
+         * 提前给明确原因，避免揭露完选不了。 */
+        if (omenSide && sides(next, omenSide).length >= 3
+          && !next.affixes.some((a) => !a.fractured && a.affix === omenSide)) {
+          return fail('预兆要求的词缀侧已满，且都是破裂词缀');
+        }
+        const choices = desecrateChoices(next, rng, 3, { side: omenSide, guaranteed: lord });
         if (!choices.length) return fail('预兆要求的深渊词缀不存在');
         message += '揭露 ' + choices.length + ' 条深渊词缀，选 1 条。';
         // 选项交给界面处理，这里把 choices 一并返回
@@ -1559,7 +1621,6 @@
       case 'whetstone':
       case 'scrap': {
         const base = getBase(next.baseId);
-        if (next.rarity === 'normal') return fail('普通物品没有词缀，先做成魔法 / 稀有再加品质。');
         if ((next.quality || 0) >= 20) return fail('品质已达上限 20%。');
         if (action.type === 'whetstone' && base.slot !== 'weapon') return fail('磨刀石只能用于武器。');
         if (action.type === 'scrap' && base.slot === 'weapon') return fail('护甲片不能用于武器。');
@@ -1587,41 +1648,67 @@
       case 'vaal': {
         if (next.corrupted) return fail('物品已经腐化。');
         next.corrupted = true;
-        // PoE2 瓦尔宝珠有四种结果：无变化 / 加腐化基底 / 重掷数值 / 移除词缀。
-        // 腐化基底词缀来自正式数据的 corruption 池（79 条），按部位与属性筛选。
+        /* PoE2 非传奇装备的瓦尔结果（官方 Corrupted 表）：
+         *   1) 无变化
+         *   2) 最多三条词缀重掷成新词缀
+         *   3) 加一条腐化附魔（腐化基底）
+         *   4) 武器 / 护甲加一个插槽（首饰没有插槽 → 无变化）
+         * 四种等概率；腐化预兆只会去掉「无变化」这一支。 */
         const vaalOmen = takeArmedOmen(next, 'vaal');
+        const vaalBase = getBase(next.baseId);
         let roll = randInt(rng, 0, 3);
         if (vaalOmen && vaalOmen.effect === 'vaal_always_change' && roll === 0) roll = randInt(rng, 1, 3);
         if (roll === 0) {
           message = '瓦尔宝珠：物品腐化，但没有别的变化。';
         } else if (roll === 1) {
+          const removable = next.affixes.filter((a) => !a.fractured);
+          const n = Math.min(3, removable.length);
+          if (!n) {
+            message = '瓦尔宝珠：物品腐化，但没有可重掷的词缀。';
+          } else {
+            // 先移除最多 3 条（不重复），再按当前稀有度补回同样数量
+            const pool = removable.slice();
+            for (let i = 0; i < n; i++) {
+              const idx = randInt(rng, 0, pool.length - 1);
+              const victim = pool.splice(idx, 1)[0];
+              next.affixes = next.affixes.filter((a) => a !== victim);
+            }
+            let added = 0;
+            for (let i = 0; i < n; i++) {
+              const side = chooseSide(next, rng);
+              if (!side || !addRandomAffix(next, side, rng, {})) break;
+              added++;
+            }
+            message = '瓦尔宝珠：物品腐化，并重掷了 ' + added + ' 条词缀。';
+          }
+        } else if (roll === 2) {
           const pool = corruptionCandidates(next);
+          let added = false;
           if (pool.length) {
             const pick = pool[randInt(rng, 0, pool.length - 1)];
-            const tier = pick.tiers[randInt(rng, 0, pick.tiers.length - 1)];
-            const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
-            next.implicitMods = [{
-              modId: pick.id,
-              group: pick.group,
-              text: formatText(tier.text, values),
-              values,
-              corrupted: true,
-            }];
-            message = '瓦尔宝珠：物品腐化，并获得腐化基底「' + next.implicitMods[0].text.split('\n')[0] + '」。';
+            const tiers = (pick.tiers || []).filter((t) => t.ilvl <= next.ilvl);
+            if (tiers.length) {
+              const tier = pickTier(rng, pick, tiers, vaalBase) || tiers[tiers.length - 1];
+              const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
+              next.implicitMods = [{
+                modId: pick.id,
+                group: pick.group,
+                text: formatText(tier.text, values),
+                values,
+                tierIlvl: tier.ilvl,
+                corrupted: true,
+              }];
+              added = true;
+              message = '瓦尔宝珠：物品腐化，并获得腐化基底「' + next.implicitMods[0].text.split('\n')[0] + '」。';
+            }
+          }
+          if (!added) message = '瓦尔宝珠：物品腐化，但没有别的变化。';
+        } else {
+          if (canSocket(vaalBase) && (next.sockets || 0) < 2) {
+            next.sockets = (next.sockets || 0) + 1;
+            message = '瓦尔宝珠：物品腐化，并增加了一个插槽（' + next.sockets + ' 个）。';
           } else {
             message = '瓦尔宝珠：物品腐化，但没有别的变化。';
-          }
-        } else if (roll === 2 && next.affixes.length) {
-          rerollAffixValues(next, rng);
-          message = '瓦尔宝珠：物品腐化，并重掷了所有词缀数值。';
-        } else {
-          const removable = next.affixes.filter((a) => !a.fractured);
-          if (removable.length) {
-            const victim = removable[randInt(rng, 0, removable.length - 1)];
-            next.affixes = next.affixes.filter((a) => a !== victim);
-            message = '瓦尔宝珠：物品腐化，并移除了「' + victim.text.split('\n')[0] + '」。';
-          } else {
-            message = '瓦尔宝珠：物品腐化。';
           }
         }
         break;
@@ -1637,18 +1724,34 @@
         const om = (D.omens || []).find((x) => x.id === action.omenId);
         if (!om) return fail('未知预兆。');
         if (!action.currency) return fail('缺少要搭配的通货。');
+        if (action.currency === 'essence' && !action.essenceId) return fail('缺少要搭配的精华。');
+        /* 预兆只会作用于它声明的那条通货：不校验的话，
+         * `{omenId: 削切, currency: exalted}` 会扣钱、正常加词缀、预兆还留在物品上。 */
+        if (om.appliesTo !== action.currency) {
+          return fail('预兆「' + om.name + '」只作用于' + currencyName(om.appliesTo) + '，不能搭配' + currencyName(action.currency) + '。');
+        }
         // 用「激活 + 执行」两步复用现有规则：先把预兆挂上，再递归调用通货本身
         const blocked = omenAvailability(next, om.id);
         if (blocked) return fail(blocked);
         if (CORRUPT_BLOCKED.indexOf(action.currency) !== -1 && next.corrupted) return fail('物品已腐化');
+        const conflict = armedOmens(next).find((o) => o.appliesTo === action.currency);
+        if (conflict) return fail('已激活「' + conflict.name + '」，先取消它再用组合操作。');
         next.meta = next.meta || { multimod: false };
         next.meta.omens = armedOmens(next).concat([{
           id: om.id, name: om.name, effect: om.effect,
           appliesTo: om.appliesTo || null, cost: om.cost,
         }]);
-        const inner = applyAction(next, { type: action.currency }, ctx);
-        if (inner.error) return inner;
-        inner.cost = Number(inner.cost || 0) + (Number(om.cost) || 0);
+        const innerAction = { type: action.currency };
+        if (action.currency === 'essence') innerAction.essenceId = action.essenceId;
+        if (action.currency === 'rune') innerAction.runeId = action.runeId;
+        const inner = applyAction(next, innerAction, ctx);
+        if (inner.error) {
+          // 组合失败：把刚挂上的预兆摘掉，别让它在错误路径上被消费
+          inner.item.meta = inner.item.meta || { multimod: false };
+          inner.item.meta.omens = armedOmens(inner.item).filter((o) => o.id !== om.id);
+          return inner;
+        }
+        inner.cost = Number(inner.cost || 0) + Number(omenCost(om, prices) || 0);
         inner.message = '（预兆：' + om.name + '）' + (inner.message || '');
         inner.omenId = om.id;
         return inner;
@@ -1706,7 +1809,7 @@
     if (item.quality) lines.push('品质: +' + item.quality + '%');
     (item.runes || []).forEach((id) => {
       const r = runeDef(id);
-      if (r) lines.push(runeText(r) + '  [符文]');
+      if (r) lines.push(runeText(r, base) + '  [符文]');
     });
     if (item.affixes.length) {
       lines.push('--------');
@@ -1842,6 +1945,8 @@
       if (mod.kind !== 'corruption') continue;
       if (!modEligibleOnBase(mod, base, item)) continue;
       if (!mod.tiers || !mod.tiers.length) continue;
+      // 物品等级不够的档不该出现在池子里（瓦尔也受 iLvl 门槛约束）
+      if (!mod.tiers.some((t) => t.ilvl <= item.ilvl)) continue;
       out.push(mod);
     }
     return out;
@@ -1881,24 +1986,29 @@
     return null;
   }
   /* 抽 count 条不同词缀组的候选，数值已掷好，供界面三选一。
-   * 优先只抽「该侧还有空位」的词缀，避免玩家选完发现放不进去。 */
-  function desecrateChoices(item, rng, count) {
+   * opts.side：预兆把揭露限制在某一侧；
+   * opts.guaranteed：预兆保证某位深渊领主（kurgal / ulaman / amanamu）的词缀出现 1 条。
+   * 旧实现是把已经抽好的 3 条再按领主过滤，结果几乎总是空池直接报错。 */
+  function desecrateChoices(item, rng, count, opts) {
+    opts = opts || {};
     const n = Math.max(1, Number(count) || 3);
     let pool = desecratedCandidates(item);
-    const openSides = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
-    const fit = pool.filter((m) => openSides.indexOf(m.affix) !== -1);
-    if (fit.length) pool = fit;
+    if (opts.side) {
+      pool = pool.filter((m) => m.affix === opts.side);
+    } else {
+      const openSides = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
+      const fit = pool.filter((m) => openSides.indexOf(m.affix) !== -1);
+      if (fit.length) pool = fit;
+    }
     pool = pool.slice();
     const out = [];
-    while (out.length < n && pool.length) {
-      const idx = randInt(rng, 0, pool.length - 1);
-      const mod = pool.splice(idx, 1)[0];
+    const roll = (mod) => {
       // 深渊词缀同样受物品等级门槛约束：低等级物品不该翻出满级深渊档
       const desBase = getBase(item.baseId);
       const desTiers = eligibleTiersFor(mod, item.ilvl, desBase);
       const tier = pickTier(rng, mod, desTiers.length ? desTiers : mod.tiers, desBase);
       const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
-      out.push({
+      return {
         modId: mod.id,
         group: mod.group,
         affix: mod.affix,
@@ -1907,7 +2017,19 @@
         values,
         tierRank: tierRank(mod, tier),
         tierIlvl: tier.ilvl,
-      });
+      };
+    };
+    if (opts.guaranteed) {
+      const re = new RegExp(opts.guaranteed, 'i');
+      const idx = pool.findIndex((m) => re.test(m.id));
+      if (idx !== -1) {
+        const mod = pool.splice(idx, 1)[0];
+        out.push(roll(mod));
+      }
+    }
+    while (out.length < n && pool.length) {
+      const idx = randInt(rng, 0, pool.length - 1);
+      out.push(roll(pool.splice(idx, 1)[0]));
     }
     return out;
   }
@@ -2076,14 +2198,12 @@
       case 'divine': return (item.rarity === 'rare' || item.rarity === 'magic') && item.affixes.length ? null : '没有可重掷的词缀';
       case 'whetstone': {
         if (getBase(item.baseId).slot !== 'weapon') return '磨刀石只能用于武器';
-        if (item.rarity === 'normal') return '先做成魔法 / 稀有再加品质';
         return (item.quality || 0) >= 20 ? '品质已达上限 20%。' : null;
       }
       case 'scrap': {
         const base = getBase(item.baseId);
         if (base.slot === 'weapon') return '护甲片不能用于武器';
         if (!canSocket(base)) return '护甲片只能用于护甲 / 盾 / 法器';
-        if (item.rarity === 'normal') return '先做成魔法 / 稀有再加品质';
         return (item.quality || 0) >= 20 ? '品质已达上限 20%。' : null;
       }
       case 'vaal': return item.corrupted ? '物品已经腐化' : null;
@@ -2113,15 +2233,22 @@
    * 界面的不可用理由、applyAction 的失败原因、顾问的候选过滤都只走这一处。 */
   function essenceAvailability(item, essence) {
     if (!essence) return '未知精华。';
+    if (item.corrupted) return '物品已腐化，不能使用精华';
     const eff = essenceDescForItem(item, essence);
     if (!eff) return '该精华不支持此物品';
     if (essence.perfect || essence.tier === 4) {
       if (item.rarity !== 'rare') return '完美精华只能用于稀有物品';
-      if (!item.affixes.some((a) => !a.fractured)) return '没有可移除词缀';
-      if (!canAdd(item, eff.affix) && !item.affixes.some((a) => !a.fractured)) return '词缀已满';
+      const omen = armedOmens(item).find((o) => o.appliesTo === 'essence');
+      if (!essenceRemovalPool(item, eff.affix, omen && omen.effect).length) {
+        return '没有可移除的词缀（该侧可能被破裂词缀占满）';
+      }
     } else {
       if (item.rarity !== 'magic') return '该档精华只能用于魔法物品';
-      if (!canAdd(item, eff.affix)) return '该侧词缀已满（' + (eff.affix === 'prefix' ? '前缀' : '后缀') + '）';
+      /* 低阶精华会把魔法升稀有：容量要按稀有算（3 条 / 侧），
+       * 否则 1 前 1 后的魔法物品永远用不了同侧精华。 */
+      if (!canAddWithRarity(item, eff.affix, 'rare')) {
+        return '稀有词缀位已满（' + (eff.affix === 'prefix' ? '前缀' : '后缀') + '）';
+      }
     }
     return null;
   }
@@ -2131,6 +2258,23 @@
     if (def.implemented === false) return '该预兆的效果尚未建模';
     if (item.corrupted) return '物品已腐化';
     if (armedOmens(item).some((o) => o.id === omenId)) return '该预兆已激活';
+    /* 亵渎类预兆要看该部位有没有对应侧的深渊词缀：
+     * 头盔 / 胸甲 / 手套 / 鞋的深渊池只有后缀，左旋（前缀）预兆在那里永远没用。 */
+    if (item.rarity === 'rare') {
+      const cands = desecratedCandidates(item);
+      if (def.effect === 'desecrate_prefix_only' && !cands.some((m) => m.affix === 'prefix')) {
+        return '该预兆对当前部位无效（没有前缀深渊词缀）';
+      }
+      if (def.effect === 'desecrate_suffix_only' && !cands.some((m) => m.affix === 'suffix')) {
+        return '该预兆对当前部位无效（没有后缀深渊词缀）';
+      }
+      const lord = def.effect === 'desecrate_guaranteed_kurgal' ? 'kurgal'
+        : def.effect === 'desecrate_guaranteed_ulaman' ? 'ulaman'
+        : def.effect === 'desecrate_guaranteed_amanamu' ? 'amanamu' : null;
+      if (lord && !cands.some((m) => new RegExp(lord, 'i').test(m.id))) {
+        return '该预兆对当前部位无效（没有该深渊领主的词缀）';
+      }
+    }
     return null;
   }
 
@@ -2149,11 +2293,12 @@
     item.affixes = item.affixes || [];
     item.influences = item.influences || [];
     if (typeof item.sockets !== 'number' || !Number.isFinite(item.sockets)) item.sockets = defaultSockets(base);
-    item.runes = (Array.isArray(item.runes) ? item.runes : []).filter((id) => !!runeDef(id));
+    /* 符文按需加载：存档载入时数据可能还没到，不能把认不出的 id 丢掉，
+     * 否则刷新一次玩家插的符文就没了。渲染 / 属性计算对未知 id 会跳过。 */
+    item.runes = (Array.isArray(item.runes) ? item.runes : []).filter((id) => typeof id === 'string' && id);
     item.implicitMods = (Array.isArray(item.implicitMods) ? item.implicitMods : []);
     if (item.runes.length > item.sockets) item.runes = item.runes.slice(0, item.sockets);
     item.meta = item.meta || { multimod: false };
-    item.meta.omens = item.meta.omens || [];
     item.meta.omens = item.meta.omens || [];
     item.meta.multimod = !!item.meta.multimod;
     return item;
@@ -2174,28 +2319,31 @@
     setSidePolicy, getSidePolicy, applyAction, actionCost, mergePrices,
     evaluate, getTargetDef, targetGroup, isBenchTarget, findMatchingAffix,
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
-    removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
+    removeAffix, addManualAffix, syncUid, sides, canAdd, canAddWithRarity, sideCap, craftedCount, maxCrafted,
     baseDefenceTags, formatText, fmtNum, tierLabel, benchById, modById, essenceById, fossilById,
     actionAvailability, omenAvailability, essenceAvailability, essenceDescForItem, syncMetaFlags,
+    omenCost, currencyName, essenceRemovalPool,
     corruptionCandidates, desecratedCandidates, baseTags, weightFor, desecrateAvailability, desecrateChoices, runeDef, runeValues, runeText, runeStatText, runeEffectFor, runeEligibleOnBase, runeAvailability, clearSocketsAvailability, canSocket, normalizeItem,
   };
 
   /* 词缀 / 精华数据在浏览器里是按需注入的（js/data-poe2.js 的 installHeavyData）。
    * 数据到齐后调这个把索引补齐：原地清空再填，外部已经拿到的 modById / targetById
    * 引用继续有效，不用重新取。 */
-  /* 破裂底子：列出这个底子能掉的词缀（选择要把哪几条设为破裂） */
+  /* 破裂底子：列出这个底子能掉的词缀（选择要把哪几条设为破裂）。
+   * 必须按「逐档权重」判定：组级可用不代表某一档能在该部位掉出来
+   * （例：+生命 T1 只掉胸甲，头盔最高只有本地 T1 = 全局 T5）。 */
   function fractureCandidates(baseId, ilvl, influences) {
     const item = createItem(baseId, { ilvl, influences, rarity: 'rare' });
     const base = getBase(item.baseId);
     if (!base) return [];
-    return D.mods.filter((mod) => modEligibleOnBase(mod, base, item) && eligibleTiers(mod, item.ilvl || base.ilvl).length);
+    return D.mods.filter((mod) => modEligibleOnBase(mod, base, item) && eligibleTiersFor(mod, item.ilvl, base).length);
   }
-  /* 生成一件带指定破裂词缀的稀有底子（PoE2 之前只有 PoE1 引擎有这两个函数，
-   * 界面的「破裂底子」按钮在 PoE2 下一直是坏的） */
+  /* 生成一件带指定破裂词缀的稀有底子 */
   function makeFracturedItem(baseId, opts) {
     opts = opts || {};
     const rng = opts.rng || defaultRng;
     const item = createItem(baseId, { ilvl: opts.ilvl, influences: opts.influences, rarity: 'rare' });
+    const base = getBase(item.baseId);
     const used = existingGroups(item);
     const wanted = (opts.modIds || (opts.modId ? [opts.modId] : [])).slice(0, 3);
     for (const id of wanted) {
@@ -2203,9 +2351,11 @@
       if (!mod) continue;
       if (used[mod.group]) continue;
       if (!canAdd(item, mod.affix)) continue;
-      const tiers = eligibleTiers(mod, item.ilvl);
+      // 只在该部位真正能掉的档里抽（按官方逐档权重加权）
+      const tiers = eligibleTiersFor(mod, item.ilvl, base);
       if (!tiers.length) continue;
-      item.affixes.push(makeAffix(mod, tiers[tiers.length - 1], rng, { fractured: true }));
+      const tier = pickTier(rng, mod, tiers, base) || tiers[tiers.length - 1];
+      item.affixes.push(makeAffix(mod, tier, rng, { fractured: true }));
       used[mod.group] = true;
     }
     return item;
@@ -2237,13 +2387,18 @@
   function installData() {
     for (const k of Object.keys(modById)) delete modById[k];
     for (const k of Object.keys(essenceById)) delete essenceById[k];
+    for (const k of Object.keys(runeById)) delete runeById[k];
     D.mods.forEach((m) => { modById[m.id] = m; });
     D.essences.forEach((e) => { essenceById[e.id] = e; });
+    /* 符文 / 灵魂核心是懒加载的：数据到齐后必须重建索引，
+     * 否则 275 张符文卡会一直显示「未知符文」、价格按 0 算。 */
+    (D.runes || []).forEach((r) => { runeById[r.id] = r; });
+    (D.soulCores || []).forEach((r) => { runeById[r.id] = r; });
     for (const k of Object.keys(targetById)) delete targetById[k];
     Object.assign(targetById, modById, benchById);
     // 精华保底词缀也能作为目标
     for (const t of (D.essenceTargets || [])) targetById[t.id] = t;
-    return { mods: D.mods.length, essences: D.essences.length };
+    return { mods: D.mods.length, essences: D.essences.length, runes: Object.keys(runeById).length };
   }
   api.installData = installData;
 

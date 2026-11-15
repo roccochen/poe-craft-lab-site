@@ -466,7 +466,16 @@
     for (let i = 0; i < 4; i++) {
       const next = new Map();
       for (const { state, prob } of frontier.values()) {
-        for (const tr of addActionDist(state, ctx, 'rare')) {
+        const trs = addActionDist(state, ctx, 'rare');
+        if (!trs.length) {
+          // 两侧都被破裂词缀占满：这一次加词缀落空，但概率质量不能丢
+          const k0 = key(state);
+          const cur0 = next.get(k0);
+          if (cur0) cur0.prob += prob;
+          else next.set(k0, { state, prob });
+          continue;
+        }
+        for (const tr of trs) {
           const k = key(tr.next);
           const cur = next.get(k);
           if (cur) cur.prob += prob * tr.prob;
@@ -837,13 +846,13 @@
     opts = opts || {};
     if (!solved || solved.unreachable || !solved.stateMap) return null;
     const stateCount = Math.max(1, solved.stateMap.size);
-    /* 预算的最大值按 ETC 估：8 倍 ETC 已经覆盖到 95% 分位以上；
-     * 格子宽度尽量细（不超过 0.5c），但把总格子数压在 ~150 万以内，
-     * 免得 6 目标那种 400 状态的实例吃几十兆内存。 */
+    /* 预算的最大值按 ETC 估：8 倍 ETC 已经覆盖到 95% 分位以上。
+     * 格子数按「状态数 × 预算格」封顶（默认 15 万），否则 3 目标以上要跑 1 秒以上，
+     * 界面每次通货都会卡住。0.5c 是分辨率下限，再细对做装决策没有意义。 */
     const maxBudget = Math.max(200, Math.min(6000, Math.ceil((solved.etc || 60) * 8)));
-    const maxCells = 1500000;
-    const unit = Math.max(0.5, Math.ceil((maxBudget / Math.floor(maxCells / stateCount)) * 10) / 10);
-    const N = Math.max(20, Math.floor(maxBudget / unit));
+    const maxCells = Math.max(20000, Number(opts.maxCells) || 150000);
+    const unit = Math.max(0.5, Math.ceil((maxBudget * stateCount / maxCells) * 2) / 2);
+    const N = Math.max(20, Math.min(Math.floor(maxCells / stateCount), Math.floor(maxBudget / unit)));
     const states = solved.stateMap;
     const terminals = solved.terminalKeys || new Set();
     const bucketOf = (cost) => Math.max(1, Math.round((Number(cost) || 0) / unit));
@@ -926,6 +935,44 @@
   /* ------------------------------------------------------------------ *
    * 对外：给顾问用的高层结果
    * ------------------------------------------------------------------ */
+  /* 按当前策略走一条「最可能路径」：每一步取该状态的最优动作 + 最可能的非自环转移。
+   * 这是给界面「推荐顺序」用的，和求解器同一份策略，不再是按稀有度写死的文案。 */
+  function routePreview(solved, ctx, maxSteps) {
+    const steps = [];
+    let st = ctx.init;
+    const seen = new Set();
+    const limit = Math.max(1, Number(maxSteps) || 6);
+    for (let i = 0; i < limit; i++) {
+      if (isTerminal(st, ctx)) break;
+      const k = key(st);
+      const act = solved.policy.get(k);
+      if (!act) break;
+      const entry = (solved.entries.get(k) || []).find((e) => e.action === act);
+      if (!entry) break;
+      let best = null;
+      for (const tr of entry.trs) {
+        if (key(tr.next) === k) continue;
+        if (!best || tr.prob > best.prob) best = tr;
+      }
+      if (!best) break;
+      steps.push({
+        id: act.id,
+        type: act.type,
+        omenId: act.omenId || null,
+        currency: act.currency || null,
+        essenceId: act.essenceId || null,
+        cost: act.cost,
+        prob: best.prob,
+        matched: popcount(best.next.mask & ctx.fullMask),
+      });
+      const guard = k + '|' + act.id;
+      if (seen.has(guard)) break;
+      seen.add(guard);
+      st = best.next;
+    }
+    return steps;
+  }
+
   function analyze(item, targets, opts) {
     opts = opts || {};
     const ctx = buildContext(item, targets, opts);
@@ -947,6 +994,7 @@
         unreachableTargets: solved.unreachableTargets || [],
         alternatives: [],
         best: null,
+        route: [],
         targets: ctx.list,
       };
     }
@@ -981,7 +1029,7 @@
       }
       alternatives.sort((a2, b2) => (a2.total == null ? Infinity : a2.total) - (b2.total == null ? Infinity : b2.total));
     }
-    return {
+    const out = {
       etc: solved.etc,
       pSuccess: solved.pSuccess,
       matched: popcount(init.mask & ctx.fullMask),
@@ -995,9 +1043,23 @@
       unreachableTargets: solved.unreachableTargets || [],
       alternatives,
       best: alternatives[0] || null,
-      budget: budgetFromSolved(solved, ctx, opts),
+      route: routePreview(solved, ctx, opts.routeSteps),
       targets: ctx.list,
     };
+    /* 预算是重计算：默认算（脚本 / 测试直接用），顾问传 budget:false
+     * 再自己挑一次算，避免两次求解各算一遍。 */
+    Object.defineProperty(out, '_solved', { value: solved, enumerable: false });
+    Object.defineProperty(out, '_ctx', { value: ctx, enumerable: false });
+    if (opts.budget !== false) out.budget = budgetFromSolved(solved, ctx, opts);
+    return out;
+  }
+  /* 懒算预算：同一个 plan 只算一次（顾问每条新计划调一次）。 */
+  function attachBudget(plan, opts) {
+    if (!plan) return null;
+    if (plan.budget) return plan.budget;
+    if (!plan._solved) return null;
+    plan.budget = budgetFromSolved(plan._solved, plan._ctx, opts || {});
+    return plan.budget;
   }
 
   function popcount(n) {
@@ -1033,6 +1095,8 @@
     analyze,
     solve,
     budgetFromSolved,
+    attachBudget,
+    routePreview,
     buildContext,
     abstractState,
     alchemyOutcome,

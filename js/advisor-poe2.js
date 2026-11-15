@@ -59,7 +59,7 @@
     }
     return ACTION_TITLE[action.type] || action.type;
   }
-  function actionDetail(action) {
+  function actionDetail(action, item) {
     if (action.type === 'omen_exec') {
       const omen = (D.omens || []).find((x) => x.id === action.omenId);
       const cur = ACTION_DETAIL[action.currency] || '';
@@ -75,7 +75,8 @@
     }
     if (action.type === 'rune') {
       const r = (D.runes || []).concat(D.soulCores || []).find((x) => x.id === action.runeId);
-      return r ? '插入' + r.name + '：' + (E.runeText ? E.runeText(r, E.getBase(item.baseId)) : r.text) + '。' : '';
+      const base = item ? E.getBase(item.baseId) : null;
+      return r ? '插入' + r.name + '：' + (E.runeText ? E.runeText(r, base) : r.text) + '。' : '';
     }
     return ACTION_DETAIL[action.type] || '';
   }
@@ -139,14 +140,6 @@
         if (!(Number(cost) > 0)) continue;
         list.push({ type: 'omen_exec', omenId: combo.omenId, currency: combo.currency, solverId: combo.solverId });
       }
-      const groups = targetGroupSet(targets);
-      (D.essences || []).forEach((e) => {
-        if (!e.perfect) return;
-        const desc = essenceDescFor(e, item);
-        if (!desc || !groups[desc.group]) return;
-        if (E.essenceAvailability(item, e)) return;
-        list.push({ type: 'essence', essenceId: e.id });
-      });
     }
     return list.filter((a) => {
       if (a.type === 'omen_exec') return !E.omenAvailability(item, a.omenId);
@@ -189,9 +182,13 @@
   const SOLVER_CACHE_MAX = 40;
   function solverCacheKey(item, targets, prices) {
     const tk = (targets || []).map((t) => t.modId + ':' + (t.tier || '')).join(',');
-    const ak = (item.affixes || []).map((a) => (a.group || a.modId) + ':' + (a.tierRank || 0) + ':' + (a.affix || '')[0]).sort().join('|');
-    const pk = prices ? ['transmute', 'augmentation', 'regal', 'alchemy', 'chaos', 'exalted', 'annulment']
-      .map((k) => Math.round(Number(prices[k] || 0) * 100)).join('/') : '';
+    /* 破裂标记必须进缓存键：只差「哪条是破裂」的两件物品，
+     * 抽象状态不同（破裂词缀移不掉），共用缓存会返回旧计划。 */
+    const ak = (item.affixes || []).map((a) => (a.group || a.modId) + ':' + (a.tierRank || 0) + ':' + (a.affix || '')[0] + ':' + (a.fractured ? 'f' : '-')).sort().join('|');
+    // 价格：所有会影响求解器的键（含精华 / 预兆），不再只取 7 个通货
+    const pk = prices
+      ? Object.keys(prices).sort().map((k) => k + '=' + Math.round(Number(prices[k] || 0) * 100)).join('/')
+      : '';
     return [item.baseId, item.ilvl, item.rarity, item.corrupted ? 1 : 0, ak, tk, pk].join('#');
   }
   function solverPlan(item, targets, prices, opts) {
@@ -200,12 +197,14 @@
     const key = solverCacheKey(item, targets, prices);
     if (SOLVER_CACHE.has(key)) return SOLVER_CACHE.get(key);
     try {
-      const base = { prices, eps: (opts && opts.eps) || 0.02 };
+      const base = { prices, eps: (opts && opts.eps) || 0.02, budget: false };
       // 先小预算试解：状态少再补一次长迭代，状态多就接受未收敛（并标下界）
       let plan = S.analyze(item, targets || [], Object.assign({ iterations: 400 }, base));
       if (plan && !plan.converged && !plan.unreachable && plan.states > 0 && plan.states <= 120) {
         plan = S.analyze(item, targets || [], Object.assign({ iterations: 1500 }, base));
       }
+      // 预算只算一次（不是每个求解尝试各算一遍）
+      if (plan && S.attachBudget) S.attachBudget(plan);
       if (SOLVER_CACHE.size >= SOLVER_CACHE_MAX) SOLVER_CACHE.delete(SOLVER_CACHE.keys().next().value);
       SOLVER_CACHE.set(key, plan);
       return plan;
@@ -297,7 +296,7 @@
       // 只删不补的动作（例如纯剥离）没有「提升概率」，期望花费不该编一个数出来
       const expectedCost = pImprove > 0 ? cost / pImprove : Infinity;
       const score = pComplete * 120 + pImprove * 45 - pRegress * 35 - expectedCost * 0.015;
-      const detail = actionDetail(action);
+      const detail = actionDetail(action, item);
       recommendations.push({
         action,
         title: actionTitle(action),
@@ -330,10 +329,15 @@
        * 导致排在后面的预兆组合拿不到「走完全程」的期望而在排序里掉队。 */
       const allAlts = expected.alternatives;
       const byId = new Map();
-      for (const a of allAlts) if (!byId.has(a.id)) byId.set(a.id, a);
+      for (const a of allAlts) {
+        if (!byId.has(a.id)) byId.set(a.id, a);
+        // 精华动作的 id 都是 'essence'：按 essenceId 再建一份，避免多颗精华互相覆盖
+        if (a.type === 'essence' && a.essenceId) byId.set('essence:' + a.essenceId, a);
+      }
       recommendations.forEach((r) => {
         const key = r.action.solverId || r.action.type;
-        const a = byId.get(key) || byId.get(r.action.type);
+        let a = byId.get(key);
+        if (!a && r.action.type === 'essence' && r.action.essenceId) a = byId.get('essence:' + r.action.essenceId);
         if (a && a.total != null) {
           r.totalExpected = a.total;
           r.solverId = a.id;
@@ -350,15 +354,38 @@
 
     const top = recommendations.slice(0, 3);
     const ev = baseEval;
+    const unreachable = !!(expected && expected.unreachable);
     let diagnosis;
     if (ev.complete) diagnosis = '目标已完成。可以停止，或继续追求更高数值。';
+    else if (item.corrupted) diagnosis = '物品已腐化：普通通货、精华、符文都不能再用，只能重新做一件。';
+    else if (unreachable) diagnosis = '按当前底子 / 物品等级，这组目标无法通过任何通货达成。';
     else if (item.rarity === 'normal') diagnosis = '普通底子：先用蜕变 / 点金起手，再根据命中的词缀决定增幅或富豪。';
     else if (item.rarity === 'magic') diagnosis = '魔法阶段：优先补到 2 条；命中的词缀越多，富豪升级越划算。';
     else diagnosis = '稀有阶段：优先崇高补空位；空位不足时用混沌 / 剥离 / 预兆处理废词缀。';
 
+    /* 推荐顺序：优先用求解器策略走出的最可能路径（和上面的卡片同一份策略）；
+     * 求解器不可用时才退回按稀有度的通用文案。 */
     let plan;
+    const route = (expected && expected.route) || [];
     if (ev.complete) {
       plan = { diagnosis: '目标完成', steps: [], finish: '结束制作。' };
+    } else if (item.corrupted) {
+      plan = { diagnosis: '物品已腐化', steps: [], finish: '腐化后不能再修改；需要的话重新做一件。' };
+    } else if (unreachable) {
+      plan = { diagnosis: '目标不可达', steps: [], finish: '放宽一条目标的档位，或换一个能掉这些词缀的底子。' };
+    } else if (route.length) {
+      const grouped = [];
+      for (const s of route) {
+        const k = s.type + ':' + (s.omenId || '') + ':' + (s.essenceId || '');
+        const last = grouped[grouped.length - 1];
+        if (last && last.key === k) last.count++;
+        else grouped.push({ key: k, step: s, count: 1 });
+      }
+      plan = {
+        diagnosis: '按求解策略的最可能路径',
+        steps: grouped.map((g) => actionTitle(g.step) + (g.count > 1 ? ' ×' + g.count : '') + '（' + fmtCost(g.step.cost) + '/次）'),
+        finish: '目标全部命中后停止；数值不满可用神圣石。',
+      };
     } else if (item.rarity === 'normal') {
       plan = {
         diagnosis: '从普通底子开始',
@@ -388,6 +415,7 @@
         pSuccess: expected.pSuccess,
         best: expected.best,
         alternatives: (expected.alternatives || []).slice(0, 4),
+        route,
         states: expected.states,
         converged: expected.converged,
         lowerBound: expected.lowerBound || false,
@@ -401,6 +429,17 @@
     };
   }
 
+  /* 目标里有没有「这颗精华能直接补上的保底词缀」。
+   * 精华词缀的 group 是 essence_<id>，和自然词缀对不上，
+   * 旧代码拿 desc.group（不存在的字段）去比，整段是死分支。 */
+  function essenceTargetFor(essenceId, targets) {
+    for (const t of (targets || [])) {
+      const def = E.getTargetDef(t.modId);
+      if (def && def.isEssence && def.essenceId === essenceId) return def;
+    }
+    return null;
+  }
+
   function chooseRouteAction(item, ev, rng, budget, spent, targets) {
     const space = E.canAdd(item, 'prefix') || E.canAdd(item, 'suffix');
     if (item.rarity === 'normal') {
@@ -408,11 +447,8 @@
     }
     if (item.rarity === 'magic') {
       if (ev.missing.length && typeof E.essenceAvailability === 'function') {
-        const groups = targetGroupSet(targets);
-        const e = (D.essences || []).find((x) => {
-          const desc = essenceDescFor(x, item);
-          return desc && groups[desc.group] && !E.essenceAvailability(item, x);
-        });
+        const e = (D.essences || []).find((x) => essenceTargetFor(x.id, targets)
+          && essenceDescFor(x, item) && !E.essenceAvailability(item, x));
         if (e) return { type: 'essence', essenceId: e.id };
       }
       if (item.affixes.length < 2) return { type: 'augmentation' };
@@ -421,17 +457,17 @@
     }
     if (item.rarity === 'rare') {
       if (ev.missing.length && typeof E.essenceAvailability === 'function') {
-        const groups = targetGroupSet(targets);
         const e = (D.essences || []).find((x) => {
           if (!x.perfect) return false;
-          const desc = essenceDescFor(x, item);
-          return desc && groups[desc.group] && !E.essenceAvailability(item, x);
+          return essenceTargetFor(x.id, targets) && essenceDescFor(x, item) && !E.essenceAvailability(item, x);
         });
         if (e) return { type: 'essence', essenceId: e.id };
       }
       if (space) return { type: 'exalted' };
       if (ev.junk.length) {
-        if (E.rand(rng) < 0.5) return { type: 'omen', omenId: 'omen_whittling' };
+        /* 保守策略只用混沌石换词：削切单次 31c，对 1c 一次的混沌来说太贵，
+         * 旧策略 50% 概率触发它，会把模拟预算烧光、成功率压到个位数。
+         * 需要预兆策略时看求解器的推荐，不要在这个交叉校验里用。 */
         return { type: 'chaos' };
       }
       return { type: 'chaos' };
@@ -457,13 +493,22 @@
       let spent = 0;
       let steps = 0;
       let success = false;
+      /* 某个动作用不了（例如该侧已满 / 预兆重复激活）时只跳过这条动作，
+       * 不要直接结束整局：那会把「估算整套花费」压成假数字。 */
+      const failed = new Set();
       while (steps < maxSteps && spent < budget) {
         const ev = E.evaluate(cur, targets);
         if (ev.complete) { success = true; break; }
         const action = chooseRouteAction(cur, ev, rng, budget, spent, targets);
         if (!action) break;
+        const actionKey = action.type + ':' + (action.omenId || '') + ':' + (action.essenceId || '');
+        if (failed.has(actionKey)) break;
         const res = E.applyAction(cur, action, { prices, rng, targets: targetIds });
-        if (res.error) break;
+        if (res.error) {
+          failed.add(actionKey);
+          if (failed.size > 8) break;
+          continue;
+        }
         cur = res.item;
         spent += res.cost || 0;
         steps++;
@@ -478,6 +523,8 @@
     }
     return {
       runs,
+      maxSteps,
+      budget,
       successRate: wins / runs,
       avgCost: totalCost / runs,
       avgWinCost: wins ? winCost / wins : 0,

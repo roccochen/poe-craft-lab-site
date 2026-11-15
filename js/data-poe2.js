@@ -163,7 +163,7 @@
     essences = ESS_SRC.map((e) => ({
       id: e.id,
       name: ESSENCE_ZH[e.typeId] || e.name || e.type,
-      fullName: (ESSENCE_ZH[e.typeId] || e.type) + '精华',
+      fullName: (ESSENCE_ZH[e.typeId] || e.name || e.type || '未知') + '精华',
       typeId: e.typeId,
       tier: e.tier,
       tierName: e.tierName,
@@ -237,6 +237,13 @@
   const OMEN_COST = {
     omen_whittling: 30, omen_sinistral_erasure: 18, omen_dextral_erasure: 18,
     omen_sinistral_exalt: 45, omen_dextral_exalt: 45, omen_greater_exalt: 85,
+    omen_greater_annulment: 30, omen_sinistral_coronation: 6, omen_dextral_coronation: 6,
+    omen_sinistral_necromancy: 4, omen_dextral_necromancy: 4,
+    omen_sinistral_crystallisation: 3, omen_dextral_crystallisation: 3,
+    omen_sinistral_alchemy: 5, omen_dextral_alchemy: 5,
+    omen_sinistral_annulment: 10, omen_dextral_annulment: 10,
+    omen_light: 2, omen_corruption: 8,
+    omen_the_blackblooded: 6, omen_the_sovereign: 6, omen_the_liege: 6,
   };
   const OMEN_ZH = {
     omen_whittling: '削切预兆',
@@ -246,12 +253,16 @@
     omen_dextral_exalt: '右旋崇高预兆',
     omen_greater_exalt: '高阶崇高预兆',
   };
-  /* 引擎已支持的预兆效果类型（见 engine-poe2.js 的 omen 分支） */
+  /* 引擎真正支持的预兆效果类型（见 engine-poe2.js 的 applyAction）。
+   * implemented 由这份清单派生：不在清单里的效果一律禁用并标「尚未建模」，
+   * 不要再用「看起来像实现了」的手写集合冒充可执行。 */
   const OMEN_SUPPORTED = new Set([
     'remove_lowest', 'remove_prefix_only', 'remove_suffix_only', 'remove_two',
     'add_prefix', 'add_suffix', 'add_two', 'remove_desecrated_only',
-    'add_same_group', 'reroll', 'quality',
-    'alchemy_max_prefix', 'alchemy_max_suffix', 'desecrate_prefix_only', 'desecrate_suffix_only', 'desecrate_guaranteed_kurgal', 'desecrate_guaranteed_ulaman', 'desecrate_guaranteed_amanamu', 'vaal_always_change', 'add_same_group',
+    'alchemy_max_prefix', 'alchemy_max_suffix',
+    'desecrate_prefix_only', 'desecrate_suffix_only',
+    'desecrate_guaranteed_kurgal', 'desecrate_guaranteed_ulaman', 'desecrate_guaranteed_amanamu',
+    'vaal_always_change',
   ]);
 
   const DAT_OMENS = (typeof window !== 'undefined' && window.POE2_DAT_OMENS && window.POE2_DAT_OMENS.omens) || null;
@@ -315,6 +326,13 @@
     whetstone: 0.2, scrap: 0.2, desecrate: 45,
     omen_whittling: 30, omen_sinistral_erasure: 18, omen_dextral_erasure: 18,
     omen_sinistral_exalt: 45, omen_dextral_exalt: 45, omen_greater_exalt: 85,
+    omen_greater_annulment: 30, omen_sinistral_coronation: 6, omen_dextral_coronation: 6,
+    omen_sinistral_necromancy: 4, omen_dextral_necromancy: 4,
+    omen_sinistral_crystallisation: 3, omen_dextral_crystallisation: 3,
+    omen_sinistral_alchemy: 5, omen_dextral_alchemy: 5,
+    omen_sinistral_annulment: 10, omen_dextral_annulment: 10,
+    omen_light: 2, omen_corruption: 8,
+    omen_the_blackblooded: 6, omen_the_sovereign: 6, omen_the_liege: 6,
   };
 
   const priceFields = [
@@ -325,6 +343,14 @@
     ['omen_whittling', '削切预兆'], ['omen_sinistral_erasure', '左旋抹除预兆'],
     ['omen_dextral_erasure', '右旋抹除预兆'], ['omen_sinistral_exalt', '左旋崇高预兆'],
     ['omen_dextral_exalt', '右旋崇高预兆'], ['omen_greater_exalt', '高阶崇高预兆'],
+    ['omen_greater_annulment', '高阶废除预兆'],
+    ['omen_sinistral_coronation', '左旋加冕预兆'], ['omen_dextral_coronation', '右旋加冕预兆'],
+    ['omen_sinistral_necromancy', '左旋死灵术预兆'], ['omen_dextral_necromancy', '右旋死灵术预兆'],
+    ['omen_sinistral_crystallisation', '左旋结晶预兆'], ['omen_dextral_crystallisation', '右旋结晶预兆'],
+    ['omen_sinistral_alchemy', '左旋炼金预兆'], ['omen_dextral_alchemy', '右旋炼金预兆'],
+    ['omen_sinistral_annulment', '左旋废除预兆'], ['omen_dextral_annulment', '右旋废除预兆'],
+    ['omen_light', '光明预兆'], ['omen_corruption', '腐化预兆'],
+    ['omen_the_blackblooded', '黑血预兆'], ['omen_the_sovereign', '君主预兆'], ['omen_the_liege', '领主预兆'],
   ];
 
   const basicActions = [
@@ -375,7 +401,7 @@
   global.PoE2Data = {
     game: 'poe2',
     label: '流放之路 2',
-    version: '0.9.5',
+    version: '0.10.0',
     configMode: 'static',
     slots: [
       { id: 'helmet', name: '头盔' }, { id: 'body', name: '胸甲' }, { id: 'gloves', name: '手套' },
