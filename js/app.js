@@ -351,29 +351,14 @@
       const el = $('#right-gear');
       if (!el) return;
       const base = E.getBase(state.item.baseId);
-      const stats = E.derivedStats(state.item);
       const inf = state.item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ') || '无';
-      let statHtml = '';
-      if (base.weapon) {
-        statHtml = '<div class="aside-metric"><span>物理 DPS</span><b>' + (stats.dps != null ? Math.round(stats.dps) : '—') + '</b></div>' +
-          '<div class="aside-metric"><span>攻击速度</span><b>' + (stats.aps != null ? stats.aps.toFixed(2) : '—') + '</b></div>' +
-          '<div class="aside-metric"><span>暴击</span><b>' + (stats.crit != null ? stats.crit.toFixed(1) + '%' : '—') + '</b></div>';
-      } else {
-        const defs = Object.keys(base.defence || {});
-        statHtml = '<div class="aside-metric"><span>防御</span><b>' + (defs.length ? defs.map((k) => ({ ar: '护甲', ev: '闪避', es: 'ES' }[k] + ' ' + Math.round(stats[k] || 0))).join(' / ') : '—') + '</b></div>' +
-          '<div class="aside-metric"><span>生命</span><b>' + Math.round(stats.life || 0) + '</b></div>' +
-          '<div class="aside-metric"><span>抗性</span><b>' + [stats.fire, stats.cold, stats.light].map((v) => Math.round(v || 0) + '%').join(' / ') + '</b></div>';
-      }
-      el.innerHTML = rightHead('STEP 01', '先确定底子', '底子决定能出现哪些词缀。选错底子，后面再怎么洗也做不出目标。') +
-        '<div class="aside-item-card"><span class="aside-kicker">当前底子</span><b>' + esc(baseLabel(base)) + '</b><em>' + esc(baseSubLabel(base) || base.en || '') + ' · iLv ' + state.item.ilvl + '</em>' +
-        '<div class="aside-metrics">' + statHtml + '</div></div>' +
+      /* 底子的名称 / 等级 / 防御数值已在左侧物品卡里，这里只留切底子时的决策信息 */
+      el.innerHTML = rightHead('STEP 01', '先确定底子', '底子决定能出现哪些词缀；选错底子，后面再怎么洗也做不出目标。') +
         '<div class="aside-line"><span>槽位</span><b>' + esc(slotName(base.slot)) + '</b></div>' +
         '<div class="aside-line"><span>影响</span><b>' + esc(inf) + '</b></div>' +
         '<div class="aside-line"><span>已设目标</span><b>' + state.targets.length + ' 条</b></div>' +
-        '<div class="aside-note">没有想要的底子？先换上面的槽位，或用搜索输入中文 / 英文名。</div>' +
-        '<button class="btn gold wide" type="button" data-open-view="targets">去设置目标 →</button>' +
-        '<button class="btn ghost wide" type="button" data-open-view="craft">直接开始做装</button>' +
-        '<div class="aside-guide"><b>选底子时先看这三点</b><ul><li>防御类型决定基础护甲 / 闪避 / ES。</li><li>底子的物品等级决定能出到哪一档词缀。</li><li>影响词缀很强，但只有对应影响才会出现。</li></ul></div>';
+        '<div class="aside-note">没有想要的底子？先换上面的槽位，或用搜索输入名称 / 英文名。</div>' +
+        '<button class="btn ghost wide" type="button" data-open-view="craft">跳过目标，直接做装</button>';
     } else if (stage === 'targets') {
       const el = $('#right-targets');
       if (!el) return;
@@ -384,15 +369,13 @@
         const hit = E.findMatchingAffix(state.item, t);
         return '<li class="aside-target ' + (hit ? 'hit' : '') + '"><span class="side-badge ' + def.affix + '">' + (def.affix === 'prefix' ? '前' : '后') + '</span><span>' + esc(def.name) + '</span><em>' + esc(targetTierLabel(t, def)) + '</em><i>' + (hit ? '✓' : '') + '</i></li>';
       }).join('');
-      el.innerHTML = rightHead('STEP 02', '目标决定路线', '先选 2–3 条。目标越多，路线越长，单次命中概率越低。') +
+      el.innerHTML = rightHead('STEP 02', '目标决定路线', '目标越多，路线越长，单次命中概率越低。') +
         '<div class="aside-progress"><b>' + ev.matchedCount + ' / ' + ev.targetCount + '</b><span>已命中</span></div>' +
         '<div class="aside-progress-bar"><i style="width:' + Math.round(ev.progress * 100) + '%"></i></div>' +
-        '<ul class="aside-target-list">' + (rows || '<li class="aside-empty">还没有目标词缀。</li>') + '</ul>' +
         '<div class="aside-line"><span>前缀目标</span><b>' + ev.targetsBySide.prefix.length + ' / 3</b></div>' +
         '<div class="aside-line"><span>后缀目标</span><b>' + ev.targetsBySide.suffix.length + ' / 3</b></div>' +
-        '<div class="aside-note">' + (state.targets.length ? '目标会自动进入右侧推荐路线。' : '先添加目标，右侧做装建议才会出现。') + '</div>' +
-        '<button class="btn gold wide" type="button" data-open-view="craft">开始做装 →</button>' +
-        '<div class="aside-guide"><b>目标不是越多越好</b><ul><li>2–3 条目标最容易规划，4 条以上要接受更长的路线。</li><li>T1 最难，先设 T2–T4 更现实。</li><li>命中目标后，剩余词缀用工艺台收尾。</li></ul></div>';
+        '<div class="aside-note">' + (state.targets.length ? '2–3 条最容易规划；T1 最难，先设 T2–T4 更现实。' : '先添加目标，右侧做装建议才会出现。') + '</div>' +
+        '<button class="btn gold wide" type="button" data-open-view="craft">开始做装 →</button>';
     } else if (stage === 'log') {
       const el = $('#right-log');
       if (!el) return;
@@ -417,12 +400,6 @@
     $$('.view').forEach((v) => { v.hidden = v.dataset.viewPanel !== state.view; });
     renderRightPanel();
     $$('#workspace-rail [data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
-    const foot = $('#rail-foot');
-    if (foot) {
-      const ev = E.evaluate(state.item, currentTargets());
-      foot.innerHTML = '<b>' + ev.matchedCount + '/' + ev.targetCount + '</b><span>目标</span>';
-      foot.style.setProperty('--p', Math.round(ev.progress * 100) + '%');
-    }
   }
   function switchView(view) {
     if (['gear', 'targets', 'craft', 'log'].indexOf(view) === -1) return;
@@ -433,40 +410,44 @@
     const stage = $('#stage');
     if (stage) stage.scrollTo({ top: 0, behavior: 'smooth' });
   }
+  /* 下一步该做什么。返回 { text, go, cta }：go 是「前往」按钮要去的视图，null 表示留在原地。 */
+  const VIEW_CTA = { gear: '去选底子 →', targets: '去设置目标 →', craft: '开始做装 →', log: '看记录 →' };
+  function nextStep() {
+    const ev = E.evaluate(state.item, currentTargets());
+    if (state.pendingResult) return { text: '先确认这一步的实际结果，再继续', go: null };
+    if (state.view === 'gear') {
+      return state.baseId
+        ? { text: '底子已选好，下一步设置 2–3 条目标词缀', go: 'targets' }
+        : { text: '先选槽位和底子', go: null };
+    }
+    if (state.view === 'targets') {
+      return state.targets.length
+        ? { text: '目标已设好，开始按推荐做装', go: 'craft' }
+        : { text: '挑 2–3 条最想要的词缀', go: null };
+    }
+    if (state.view === 'log') return { text: '这里能看每一步的消耗和词缀变化', go: null };
+    if (!state.targets.length) return { text: '还没有目标：先去设置 2–3 条', go: 'targets' };
+    if (ev.complete) return { text: '目标齐了：检查数值，满意就可以停', go: 'log' };
+    if (state.item.rarity === 'normal') return { text: '先选一种起手通货，或按右侧首选做第一步', go: null };
+    return { text: '按右侧「先做这个」执行一步', go: null };
+  }
   function renderJourney() {
     const next = $('#journey-next');
     if (!next) return;
-    const ev = E.evaluate(state.item, currentTargets());
-    let active = 'base';
-    if (state.view === 'targets') active = 'targets';
-    if (state.view === 'craft') active = 'craft';
-    if (state.view === 'log') active = 'finish';
-    const order = ['base', 'targets', 'craft', 'finish'];
-    const activeIndex = order.indexOf(active);
-    $$('#journey [data-step]').forEach((li) => {
-      const idx = order.indexOf(li.dataset.step);
-      li.classList.toggle('active', idx === activeIndex);
-      li.classList.toggle('done', idx < activeIndex);
-      const btn = li.querySelector('button');
-      if (btn) btn.setAttribute('aria-current', idx === activeIndex ? 'step' : 'false');
-    });
-    if (state.pendingResult) {
-      next.textContent = '先确认这一步的实际结果，再继续';
-    } else if (state.view === 'gear') {
-      next.textContent = '先选槽位和底子';
-    } else if (state.view === 'targets') {
-      next.textContent = '设置 2–3 条最想要的目标词缀';
-    } else if (state.view === 'log') {
-      next.textContent = '这里能看每一步的消耗和词缀变化';
-    } else if (!state.targets.length) {
-      next.textContent = '还没有目标：先去「目标」设置 2–3 条';
-    } else if (ev.complete) {
-      next.textContent = '目标齐了：检查数值，满意就可以停';
-    } else if (state.item.rarity === 'normal') {
-      next.textContent = '先选一种起手通货，或按右侧首选做第一步';
-    } else {
-      next.textContent = '下一步：看顾问的「先做这个」，点执行这一步';
+    const step = nextStep();
+    next.textContent = step.text;
+    const go = $('#journey-go');
+    if (go) {
+      go.hidden = !step.go;
+      if (step.go) {
+        go.dataset.go = step.go;
+        go.textContent = VIEW_CTA[step.go] || '前往 →';
+      }
     }
+    /* 导航只剩左栏这一套：用它标当前步骤 */
+    $$('#workspace-rail [data-view]').forEach((b) => {
+      b.setAttribute('aria-current', b.dataset.view === state.view ? 'page' : 'false');
+    });
   }
   function openGuide() {
     const html =
@@ -705,7 +686,7 @@
     return E.formatText(def.text, tier.v.map((r) => (r[0] + r[1]) / 2));
   }
   function renderTargets() {
-    $('#target-count').textContent = state.targets.length + ' / 6';
+    $('#target-count').textContent = '已选 ' + state.targets.length + ' 条';
     const el = $('#target-list');
     if (!state.targets.length) {
       el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方列表里挑 2–3 条添加。</div>';
@@ -936,7 +917,7 @@
           '<span class="mod-text">' + mdText(a.text) + '</span>' +
           '<span class="mod-tag">' + esc(tagBits.join(' · ')) + '</span></li>';
       }).join('') + '</ul>'
-      : '<div class="item-open item-start"><b>还没有词缀，先做第一步</b><p>看「现在推荐这样做」，点「执行这一步」；也可以从下方通货里选一个起手。</p><button class="btn tiny ghost" id="item-guide" type="button">看新手指南</button></div>';
+      : '<div class="item-open item-start"><b>还没有词缀</b><p>第一个通货决定起手：普通底子先用蜕变石或点金石。</p></div>';
     const implicitLines = [];
     if (Array.isArray(item.implicitMods) && item.implicitMods.length) {
       item.implicitMods.forEach((m) => {
@@ -1003,8 +984,6 @@
         openHtml;
     }
     $('#item-stats').innerHTML = statsHtml;
-    const itemGuide = $('#item-guide');
-    if (itemGuide) itemGuide.onclick = openGuide;
   }
 
   /* ------------------------------------------------------------------ actions */
@@ -1286,8 +1265,13 @@
   }
   function renderBasicActions(body) {
     const prices = priceOverrides();
-    body.innerHTML = '<div class="action-grid">' + basicActions().map((a) => {
-      const reason = state.pendingResult ? '先确认上一步实际结果' : basicAvailability(a.type);
+    /* 现在用不上的通货（没有可移除的词缀、已腐化等）收进折叠区：
+       一屏只摆能点的，读完再展开。 */
+    const rows = basicActions().map((a) => ({
+      a,
+      reason: state.pendingResult ? '先确认上一步实际结果' : basicAvailability(a.type),
+    }));
+    const card = ({ a, reason }) => {
       const cost = E.actionCost({ type: a.type }, prices);
       const poolNote = a.type === 'vaal' && typeof E.corruptionCandidates === 'function'
         ? '（腐化基底池 ' + (E.corruptionCandidates(state.item) || []).length + ' 条）' : '';
@@ -1296,7 +1280,14 @@
         '<span class="action-info"><span class="action-name">' + a.name + '<span class="phase-tag">' + actionPhase(a.type) + '</span></span><span class="action-desc">' + a.desc + '</span>' +
         (reason ? '<span class="action-reason">' + esc(reason) + '</span>' : '') + '</span>' +
         '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
-    }).join('') + '</div>';
+    };
+    const usable = rows.filter((r) => !r.reason);
+    const blocked = rows.filter((r) => r.reason);
+    body.innerHTML = '<div class="action-grid">' + usable.map(card).join('') + '</div>' +
+      (blocked.length
+        ? '<details class="action-more"><summary>' + blocked.length + ' 个现在用不上</summary>' +
+          '<div class="action-grid">' + blocked.map(card).join('') + '</div></details>'
+        : '');
     $$('#action-body [data-basic]').forEach((b) => {
       b.onclick = () => {
         const reason = basicAvailability(b.dataset.basic);
@@ -2072,19 +2063,6 @@
   }
 
   /* ------------------------------------------------------------------ advisor */
-  function targetChecksHtml(analysis) {
-    if (!state.targets.length) return '';
-    return '<ul class="target-checks">' + state.targets.map((t) => {
-      const def = E.getTargetDef(t.modId);
-      if (!def) return '';
-      const hit = E.findMatchingAffix(state.item, t);
-      const isBench = D.bench.some((b) => b.id === t.modId);
-      return '<li class="check-item ' + (hit ? 'ok' : 'miss') + '">' +
-        '<span class="mark">' + (hit ? '✓' : '×') + '</span>' +
-        '<span>' + esc(def.name) + '</span>' +
-        '<span class="tier">' + esc(targetTierLabel(t, def)) + (hit ? ' · 已命中' : '') + '</span></li>';
-    }).join('') + '</ul>';
-  }
   /* 期望成本条：剩余期望成本 / 完成概率 / 最优动作的分支预览。
    * 数字来自抽象状态 MDP 求解器（js/solver-poe2.js）。 */
   function renderPlanStrip(analysis) {
@@ -2101,7 +2079,9 @@
         return def ? def.name : id;
       });
       let hint;
-      if (e.unreachableReason === 'slots') hint = '同一侧最多 3 条词缀，当前目标装不下：减一条同侧目标再试。';
+      if (e.unreachableReason === 'corrupted') hint = '物品已腐化：普通通货、精华、符文都不能再用，只能重新做一件。';
+      else if (e.unreachableReason === 'stuck') hint = '词缀已满，而且剩下的词缀都是破裂的（移不掉）：这件没法继续做了。';
+      else if (e.unreachableReason === 'slots') hint = '同一侧最多 3 条词缀，当前目标装不下：减一条同侧目标再试。';
       else if (names.length) hint = '这些词缀不会出现在当前底子上：' + names.map(esc).join('、') + '。换底子或去掉它。';
       else if (e.unreachableReason === 'probability') hint = '按当前目标组合，6 个词缀位装不下或无法通过任何通货达成。';
       else hint = '按当前底子 / 物品等级，这组目标无法通过任何通货达成。';
@@ -2175,13 +2155,13 @@
     const targets = currentTargets();
     const elDiag = $('#diagnosis');
     const elRecs = $('#recommendations');
+    const elAlts = $('#alt-recommendations');
+    const moreBox = $('#advisor-more');
     if (!targets.length) {
       elDiag.textContent = '先选 2–3 条你最想要的词缀，顾问才会告诉你下一步怎么做。';
-      $('#progress-text').textContent = '0 / 0';
-      $('#progress-fill').style.width = '0%';
-      $('#progress-meta').textContent = '等待目标';
-      $('#target-checks').innerHTML = '';
       elRecs.innerHTML = '<div class="action-none">添加至少 1 条目标词缀后，这里会给出下一步建议。</div>';
+      if (elAlts) elAlts.innerHTML = '';
+      if (moreBox) moreBox.hidden = true;
       $('#route-plan').innerHTML = '<div class="plan-diagnosis">先添加 1 条目标词缀，顾问才会给出路线。</div>';
       $('#plan-title').textContent = '等待目标';
       $('#route-stats').classList.remove('show');
@@ -2207,15 +2187,8 @@
     }
     state._analysis = analysis;
     const ev = analysis.eval;
-    elDiag.innerHTML = '<b class="diag-label">现在的情况</b>' + esc(!state.item.affixes.length ? '还没有词缀。先看右边的「先做这个」，点执行；不用自己算。' : analysis.diagnosis);
-    $('#progress-text').textContent = ev.matchedCount + ' / ' + ev.targetCount;
-    $('#progress-fill').style.width = Math.round(ev.progress * 100) + '%';
-    const meta = [];
-    meta.push('还能加 ' + ev.openPrefix + ' 条前缀 · ' + ev.openSuffix + ' 条后缀');
-    meta.push('不想要的词缀 ' + ev.junk.length);
-    if (ev.complete) meta.push('目标完成');
-    $('#progress-meta').textContent = meta.join(' · ');
-    $('#target-checks').innerHTML = targetChecksHtml(analysis);
+    elDiag.innerHTML = '<b class="diag-label">现在的情况</b>' + esc(analysis.diagnosis);
+    if (moreBox) moreBox.hidden = false;
 
     if (state.pendingResult) {
       elDiag.innerHTML = '<b class="diag-label">等待确认</b>这一步已经模拟完成。先告诉助理游戏里实际发生了什么，确认后再计算新的下一步。';
@@ -2236,45 +2209,42 @@
     const recs = analysis.recommendations.slice(0, 3);
     renderPlanStrip(analysis);
     renderBudgetBox(analysis);
+    /* 一张主卡 + 折叠的备选：一屏只逼用户做一个决定 */
+    const recCard = (r, i, rank) => {
+      const steps = (r.steps || []).map((s) => '<li>' + esc(s) + '</li>').join('');
+      return '<article class="rec-card ' + (i === 0 ? 'primary' : '') + '">' +
+        '<div class="rec-top"><span class="rec-rank">' + rank + '</span><span class="rec-title">' + esc(r.title) + '</span>' +
+        (r.exact
+          ? '<span class="rec-badge exact" title="按官方权重表解析计算，没有抽样噪声">精确</span>'
+          : '<span class="rec-badge est" title="蒙特卡洛抽样估计，会有 ±2% 左右的抖动">估计</span>') +
+        '<span class="rec-cost"><b>' + costText(r.cost) + '</b> / 次</span></div>' +
+        '<div class="rec-detail">' + esc(r.detail) + '</div>' +
+        '<div class="rec-metrics">' +
+        '<div class="metric"><span>更接近目标</span><b class="' + (r.pImprove >= 0.25 ? 'good' : r.pImprove > 0 ? '' : 'warn') + '">' + pctText(r.pImprove) + '</b></div>' +
+        '<div class="metric"><span>直接做完</span><b class="' + (r.pComplete > 0 ? 'good' : '') + '">' + pctText(r.pComplete) + '</b></div>' +
+        (r.totalExpected != null
+          ? '<div class="metric hl"><span>走完还要</span><b>' + A.fmtCost(r.totalExpected) + '</b></div>'
+          : '<div class="metric"><span>平均花费</span><b>' + A.fmtCost(r.expectedCost) + '</b></div>') +
+        '</div>' +
+        (r.pRegress > 0 ? '<div class="rec-risk">可能弄丢已有目标 ' + pctText(r.pRegress) + '</div>' : '') +
+        (r.warning ? '<div class="rec-warning">' + esc(r.warning) + '</div>' : '') +
+        '<div class="rec-actions"><button class="btn gold" type="button" data-exec-rec="' + i + '">执行这一步</button></div>' +
+        '<details class="rec-details"><summary>为什么推荐 / 怎么做</summary>' +
+        '<ul class="rec-why">' + (r.why || []).map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>' +
+        (steps ? '<ul class="rec-steps">' + steps + '</ul>' : '') + '</details></article>';
+    };
     if (!recs.length) {
       elRecs.innerHTML = '<div class="action-none">当前没有可执行的建议，请检查目标与物品状态。</div>';
+      if (elAlts) elAlts.innerHTML = '';
     } else {
-      elRecs.innerHTML = recs.map((r, i) => {
-        const rank = i === 0 ? '先做这个' : i === 1 ? '也可以' : '备选';
-        const steps = (r.steps || []).map((s) => '<li>' + esc(s) + '</li>').join('');
-        return '<article class="rec-card ' + (i === 0 ? 'primary' : '') + '">' +
-          '<div class="rec-top"><span class="rec-rank">' + rank + '</span><span class="rec-title">' + esc(r.title) + '</span>' +
-          (r.exact
-            ? '<span class="rec-badge exact" title="按官方权重表解析计算，没有抽样噪声">精确</span>'
-            : '<span class="rec-badge est" title="蒙特卡洛抽样估计，会有 ±2% 左右的抖动">估计</span>') +
-          '<span class="rec-cost"><b>' + costText(r.cost) + '</b> / 次</span></div>' +
-          '<div class="rec-detail">' + esc(r.detail) + '</div>' +
-          '<div class="rec-metrics">' +
-          '<div class="metric"><span>更接近目标</span><b class="' + (r.pImprove >= 0.25 ? 'good' : r.pImprove > 0 ? '' : 'warn') + '">' + pctText(r.pImprove) + '</b></div>' +
-          '<div class="metric"><span>直接做完</span><b class="' + (r.pComplete > 0 ? 'good' : '') + '">' + pctText(r.pComplete) + '</b></div>' +
-          (r.totalExpected != null
-            ? '<div class="metric hl"><span>走完还要</span><b>' + A.fmtCost(r.totalExpected) + '</b></div>'
-            : '<div class="metric"><span>平均花费</span><b>' + A.fmtCost(r.expectedCost) + '</b></div>') +
-          '</div>' +
-          (r.pRegress > 0 ? '<div class="rec-risk">可能弄丢已有目标 ' + pctText(r.pRegress) + '</div>' : '') +
-          (r.warning ? '<div class="rec-warning">' + esc(r.warning) + '</div>' : '') +
-          '<details class="rec-details" ' + (i === 0 ? 'open' : '') + '><summary>为什么推荐 / 怎么做</summary>' +
-          '<ul class="rec-why">' + (r.why || []).map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>' +
-          (steps ? '<ul class="rec-steps">' + steps + '</ul>' : '') + '</details>' +
-          '<div class="rec-actions"><button class="btn gold" type="button" data-exec-rec="' + i + '">执行这一步</button>' +
-          '<button class="btn ghost details" type="button" data-rec-detail="' + i + '">为什么</button></div></article>';
-      }).join('');
-      $$('#recommendations [data-exec-rec]').forEach((b) => {
+      elRecs.innerHTML = recCard(recs[0], 0, '先做这个');
+      if (elAlts) {
+        elAlts.innerHTML = recs.slice(1).map((r, k) => recCard(r, k + 1, k === 0 ? '也可以' : '备选')).join('');
+      }
+      $$('#recommendations [data-exec-rec], #alt-recommendations [data-exec-rec]').forEach((b) => {
         b.onclick = () => {
           const rec = recs[Number(b.dataset.execRec)];
           if (rec) performAction(rec.action);
-        };
-      });
-      $$('#recommendations [data-rec-detail]').forEach((b) => {
-        b.onclick = () => {
-          const card = b.closest('.rec-card');
-          const details = card && card.querySelector('details');
-          if (details) details.open = !details.open;
         };
       });
     }
@@ -3021,12 +2991,10 @@
       btn.onclick = () => {
         const map = { base: 'gear', targets: 'targets', craft: 'craft', finish: 'craft' };
         switchView(map[btn.dataset.jump] || 'craft');
-        if (btn.dataset.jump === 'finish') {
-          const el = $('#step-finish');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
       };
     });
+    const goBtn = $('#journey-go');
+    if (goBtn) goBtn.onclick = () => { if (goBtn.dataset.go) switchView(goBtn.dataset.go); };
     $$('[data-collapse]').forEach((btn) => {
       btn.onclick = () => toggleCollapse(btn.dataset.collapse);
     });

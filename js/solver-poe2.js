@@ -100,8 +100,31 @@
       caps: { magic: 1, rare: 3 },
       tierCaps: opts.tierCaps || {},
     };
+    /* 破裂词缀在整个求解过程中都不会消失（通货移不掉），所以它们不是状态，
+     * 而是常量：按侧计数 + 哪些目标位是破裂的（那一位永远不会丢）。 */
+    ctx.frac = fracturedInfo(item, list);
     ctx.init = abstractState(item, list);
     return ctx;
+  }
+
+  function matchTarget(group, tierRank, list) {
+    for (const tg of list || []) {
+      if (tg.group !== group) continue;
+      if (tg.tierCap && tierRank > tg.tierCap) continue;
+      return tg;
+    }
+    return null;
+  }
+  function fracturedInfo(item, list) {
+    const info = { prefix: 0, suffix: 0, mask: 0 };
+    for (const a of item.affixes || []) {
+      if (!a.fractured) continue;
+      const hit = matchTarget(a.group, a.tierRank, list);
+      if (hit) info.mask |= hit.bit;
+      else if (a.affix === 'prefix') info.prefix += 1;
+      else info.suffix += 1;
+    }
+    return info;
   }
 
   /* 里品 → 抽象状态 */
@@ -120,6 +143,7 @@
         break;
       }
       if (hit) mask |= hit.bit;
+      else if (a.fractured) continue;          // 破裂废词移不掉，记在 ctx.frac 里
       else if (a.affix === 'prefix') junkP++;
       else junkS++;
     }
@@ -142,7 +166,39 @@
     for (const t of ctx.list) {
       if (s.mask & t.bit) { if (t.side === 'prefix') mp++; else ms++; }
     }
-    return { p: mp + s.junkP, s: ms + s.junkS, matched: mp + ms, junk: s.junkP + s.junkS };
+    const frac = ctx.frac || { prefix: 0, suffix: 0, mask: 0 };
+    const matchedRemovable = popcount((s.mask & ~frac.mask) & ctx.fullMask);
+    return {
+      p: mp + s.junkP + frac.prefix,
+      s: ms + s.junkS + frac.suffix,
+      matched: mp + ms,
+      junk: s.junkP + s.junkS,
+      fracP: frac.prefix,
+      fracS: frac.suffix,
+      removable: matchedRemovable + s.junkP + s.junkS,
+    };
+  }
+  function removableOnSide(s, ctx, side) {
+    const fracMask = (ctx.frac && ctx.frac.mask) || 0;
+    let k = 0;
+    for (const t of ctx.list) {
+      if (!(s.mask & t.bit)) continue;
+      if (fracMask & t.bit) continue;
+      if (side && t.side !== side) continue;
+      k++;
+    }
+    if (side !== 'suffix') k += s.junkP;
+    if (side !== 'prefix') k += s.junkS;
+    return k;
+  }
+  function openSlots(s, ctx, capRarity) {
+    const c = counts(s, ctx);
+    let total = 0;
+    for (const side of SIDES) {
+      const used = side === 'prefix' ? c.p : c.s;
+      total += Math.max(0, capFor(s, ctx, side, capRarity) - used);
+    }
+    return total;
   }
   function openSides(s, ctx, capRarity) {
     const c = counts(s, ctx);
@@ -208,25 +264,89 @@
     return out;
   }
 
-  function removeDist(s, ctx) {
-    const c = counts(s, ctx);
-    const n = c.matched + c.junk;
-    if (!n) return [];
-    const out = [];
-    const each = 1 / n;
+  /* 可移除词缀的分布，可限定某一侧（抹除类预兆）。破碎词缀永远不在池子里。 */
+  function removeDistOnSide(s, ctx, side) {
+    const fracMask = (ctx.frac && ctx.frac.mask) || 0;
+    const matched = [];
     for (const t of ctx.list) {
       if (!(s.mask & t.bit)) continue;
+      if (fracMask & t.bit) continue;
+      if (side && t.side !== side) continue;
+      matched.push(t);
+    }
+    const jp = side === 'suffix' ? 0 : s.junkP;
+    const js = side === 'prefix' ? 0 : s.junkS;
+    const n = matched.length + jp + js;
+    if (!n) return [];
+    const each = 1 / n;
+    const out = [];
+    for (const t of matched) {
       out.push({
         prob: each,
         next: { rarity: s.rarity, mask: s.mask & ~t.bit, junkP: s.junkP, junkS: s.junkS, corrupted: s.corrupted },
         lost: t.bit,
       });
     }
-    if (s.junkP) {
-      out.push({ prob: each * s.junkP, next: { rarity: s.rarity, mask: s.mask, junkP: s.junkP - 1, junkS: s.junkS, corrupted: s.corrupted } });
+    if (jp) out.push({ prob: each * jp, next: { rarity: s.rarity, mask: s.mask, junkP: s.junkP - 1, junkS: s.junkS, corrupted: s.corrupted } });
+    if (js) out.push({ prob: each * js, next: { rarity: s.rarity, mask: s.mask, junkP: s.junkP, junkS: s.junkS - 1, corrupted: s.corrupted } });
+    return out;
+  }
+  function removeDist(s, ctx) { return removeDistOnSide(s, ctx, null); }
+
+  /* 删一条（可限侧）+ 若还有空位按落侧 50/50 再加一条：混沌石 / 定向抹除共用 */
+  function chaosDist(s, ctx, side) {
+    const out = [];
+    for (const rm of removeDistOnSide(s, ctx, side)) {
+      const open = openSides(rm.next, ctx, rm.next.rarity);
+      if (!open.length) { out.push({ prob: rm.prob, next: rm.next }); continue; }
+      const share = 1 / open.length;
+      for (const addSide of open) {
+        for (const add of addDist(rm.next, addSide, ctx, rm.next.rarity)) {
+          out.push({ prob: rm.prob * add.prob * share, next: add.next, hit: add.hit, lost: rm.lost, side: addSide });
+        }
+      }
     }
-    if (s.junkS) {
-      out.push({ prob: each * s.junkS, next: { rarity: s.rarity, mask: s.mask, junkP: s.junkP, junkS: s.junkS - 1, corrupted: s.corrupted } });
+    return out;
+  }
+
+  /* 削切：真实规则是删「最低等级」的词缀。抽象状态没有等级信息，
+   * 近似为「优先删废词，没有废词再按均匀删」——废词通常就是低档词。 */
+  function whittlingDist(s, ctx) {
+    let removal;
+    const junkTotal = s.junkP + s.junkS;
+    if (junkTotal > 0) {
+      removal = [];
+      if (s.junkP) removal.push({ prob: s.junkP / junkTotal, next: Object.assign({}, s, { junkP: s.junkP - 1 }) });
+      if (s.junkS) removal.push({ prob: s.junkS / junkTotal, next: Object.assign({}, s, { junkS: s.junkS - 1 }) });
+    } else {
+      removal = removeDistOnSide(s, ctx, null);
+    }
+    const out = [];
+    for (const rm of removal) {
+      const open = openSides(rm.next, ctx, rm.next.rarity);
+      if (!open.length) { out.push({ prob: rm.prob, next: rm.next }); continue; }
+      const share = 1 / open.length;
+      for (const addSide of open) {
+        for (const add of addDist(rm.next, addSide, ctx, rm.next.rarity)) {
+          out.push({ prob: rm.prob * add.prob * share, next: add.next, hit: add.hit, lost: rm.lost, side: addSide });
+        }
+      }
+    }
+    return out;
+  }
+
+  /* 高阶崇高：一次加两条（每次独立落侧） */
+  function twoAddDist(s, ctx, rarityAfter) {
+    const out = [];
+    for (const first of addActionDist(s, ctx, rarityAfter)) {
+      for (const second of addActionDist(first.next, ctx, rarityAfter)) {
+        out.push({
+          prob: first.prob * second.prob,
+          next: second.next,
+          hit: second.hit || first.hit,
+          side: second.side,
+        });
+      }
     }
     return out;
   }
@@ -235,7 +355,7 @@
   function alchemyDist(ctx) {
     if (ctx._alchemy) return ctx._alchemy;
     let frontier = new Map();
-    const start = { rarity: 'rare', mask: 0, junkP: 0, junkS: 0, corrupted: false };
+    const start = { rarity: 'rare', mask: (ctx.frac && ctx.frac.mask) || 0, junkP: 0, junkS: 0, corrupted: false };
     frontier.set(key(start), { state: start, prob: 1 });
     for (let i = 0; i < 4; i++) {
       const next = new Map();
@@ -260,6 +380,46 @@
     return Number(E.actionCost({ type }, ctx.prices)) || 0;
   }
 
+  /* 可执行的预兆组合：只建模「有明确价格 + 规则能压进抽象状态」的几种。
+   * 没有配置价格的一律不进决策，避免出现「免费动作」把方案带偏。 */
+  const OMEN_ACTIONS = [
+    { id: 'exalt_left', currency: 'exalted', omenId: 'omen_sinistral_exalt', kind: 'add', side: 'prefix' },
+    { id: 'exalt_right', currency: 'exalted', omenId: 'omen_dextral_exalt', kind: 'add', side: 'suffix' },
+    { id: 'exalt_two', currency: 'exalted', omenId: 'omen_greater_exalt', kind: 'add2' },
+    { id: 'chaos_left', currency: 'chaos', omenId: 'omen_sinistral_erasure', kind: 'chaos', side: 'prefix' },
+    { id: 'chaos_right', currency: 'chaos', omenId: 'omen_dextral_erasure', kind: 'chaos', side: 'suffix' },
+    { id: 'whittling', currency: 'chaos', omenId: 'omen_whittling', kind: 'whittling' },
+  ];
+  function omenCost(def, ctx) {
+    const cost = Number(E.actionCost({ type: 'omen_exec', omenId: def.omenId, currency: def.currency }, ctx.prices));
+    return Number.isFinite(cost) && cost > 0 ? cost : 0;
+  }
+  function omenActionsFor(s, ctx, c) {
+    if (s.rarity !== 'rare') return [];
+    const out = [];
+    for (const def of OMEN_ACTIONS) {
+      const cost = omenCost(def, ctx);
+      if (!cost) continue;                       // 没配价格 → 不建模
+      if (def.kind === 'chaos' || def.kind === 'whittling') {
+        if (c.removable <= 0) continue;
+        if (def.side && removableOnSide(s, ctx, def.side) <= 0) continue;
+      } else {
+        const openNow = openSides(s, ctx, s.rarity);
+        if (!openNow.length) continue;
+        if (def.side && openNow.indexOf(def.side) === -1) continue;
+        if (def.kind === 'add2' && openSlots(s, ctx, s.rarity) < 2) continue;
+      }
+      out.push({
+        id: def.id,
+        type: 'omen_exec',
+        omenId: def.omenId,
+        currency: def.currency,
+        cost,
+      });
+    }
+    return out;
+  }
+
   function actionsFor(s, ctx) {
     if (s.corrupted) return [];
     const c = counts(s, ctx);
@@ -271,14 +431,16 @@
       if (c.p + c.s < 2) out.push({ id: 'augmentation', type: 'augmentation', cost: costOf('augmentation', ctx) });
       out.push({ id: 'regal', type: 'regal', cost: costOf('regal', ctx) });
       out.push({ id: 'alchemy', type: 'alchemy', cost: costOf('alchemy', ctx) });
-      if (c.p + c.s > 0) out.push({ id: 'annulment', type: 'annulment', cost: costOf('annulment', ctx) });
+      // 可移除数为 0（比如全破裂）时，引擎会直接拒绝，求解器不能再推荐
+      if (c.removable > 0) out.push({ id: 'annulment', type: 'annulment', cost: costOf('annulment', ctx) });
     } else if (s.rarity === 'rare') {
       const open = openSides(s, ctx);
       if (open.length) out.push({ id: 'exalted', type: 'exalted', cost: costOf('exalted', ctx) });
-      if (c.p + c.s > 0) {
+      if (c.removable > 0) {
         out.push({ id: 'chaos', type: 'chaos', cost: costOf('chaos', ctx) });
         out.push({ id: 'annulment', type: 'annulment', cost: costOf('annulment', ctx) });
       }
+      for (const om of omenActionsFor(s, ctx, c)) out.push(om);
     }
     return out;
   }
@@ -291,21 +453,13 @@
       case 'exalted': return addActionDist(s, ctx, s.rarity);
       case 'alchemy': return alchemyDist(ctx);
       case 'annulment': return removeDist(s, ctx);
-      case 'chaos': {
-        // 删一条 → 若还有空位按落侧 50/50 再加一条
-        const out = [];
-        for (const rm of removeDist(s, ctx)) {
-          const open = openSides(rm.next, ctx, rm.next.rarity);
-          if (!open.length) { out.push({ prob: rm.prob, next: rm.next }); continue; }
-          const share = 1 / open.length;
-          for (const side of open) {
-            for (const add of addDist(rm.next, side, ctx, rm.next.rarity)) {
-              out.push({ prob: rm.prob * add.prob * share, next: add.next, hit: add.hit, lost: rm.lost, side });
-            }
-          }
-        }
-        return out;
-      }
+      case 'chaos': return chaosDist(s, ctx, null);
+      case 'exalt_left': return addDist(s, 'prefix', ctx, s.rarity);
+      case 'exalt_right': return addDist(s, 'suffix', ctx, s.rarity);
+      case 'exalt_two': return twoAddDist(s, ctx, s.rarity);
+      case 'chaos_left': return chaosDist(s, ctx, 'prefix');
+      case 'chaos_right': return chaosDist(s, ctx, 'suffix');
+      case 'whittling': return whittlingDist(s, ctx);
       default: return [];
     }
   }
@@ -316,6 +470,13 @@
   function solve(ctx, opts) {
     opts = opts || {};
     if ((ctx.fullMask === 0)) return { etc: 0, pSuccess: 1, states: 0, converged: true, unreachable: false };
+    /* 腐化物品不能再用任何通货：这是「已经做不动了」，不是「目标不可达」 */
+    if (ctx.init.corrupted) {
+      return {
+        etc: null, pSuccess: 0, states: 0, iterations: 0, converged: true,
+        unreachable: true, unreachableReason: 'corrupted', unreachableTargets: [],
+      };
+    }
     /* 先做一次结构性可达性检查：某个目标在该侧的池子里根本没有可掉的行，
      * 那不管怎么点都做不出来，直接给 null，别让值迭代跑出一个假的有限值。 */
     const unreachableTargets = ctx.list.filter((t) => {
@@ -448,6 +609,7 @@
     }
 
     const initKey = key(init);
+    const noAction = !isTerminal(init, ctx) && !(entries.get(initKey) || []).length;
     let etc = isTerminal(init, ctx) ? 0 : V.get(initKey);
     let pSuccess = P.get(initKey) || 0;
     const converged = delta <= eps;
@@ -465,7 +627,9 @@
       iterations: iter,
       converged,
       unreachable,
-      unreachableReason: unreachable ? (solvedUnreachable(ctx).length ? 'pool' : 'probability') : null,
+      unreachableReason: unreachable
+        ? (solvedUnreachable(ctx).length ? 'pool' : (noAction ? 'stuck' : 'probability'))
+        : null,
       unreachableTargets: unreachable ? solvedUnreachable(ctx) : [],
       V,
       P,

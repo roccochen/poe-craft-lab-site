@@ -40,6 +40,11 @@
   }
   function actionTitle(action) {
     if (!action) return '操作';
+    if (action.type === 'omen_exec') {
+      const omen = (D.omens || []).find((x) => x.id === action.omenId);
+      const cur = ACTION_TITLE[action.currency] || action.currency || '';
+      return (omen ? omen.name : '预兆') + ' · ' + cur;
+    }
     if (action.type === 'omen') {
       const omen = (D.omens || []).find((x) => x.id === action.omenId);
       return omen ? omen.name : '预兆';
@@ -55,6 +60,11 @@
     return ACTION_TITLE[action.type] || action.type;
   }
   function actionDetail(action) {
+    if (action.type === 'omen_exec') {
+      const omen = (D.omens || []).find((x) => x.id === action.omenId);
+      const cur = ACTION_DETAIL[action.currency] || '';
+      return (omen ? omen.desc.replace(/\s+/g, '') : '') + (cur ? '（' + cur + '）' : '');
+    }
     if (action.type === 'omen') {
       const omen = (D.omens || []).find((x) => x.id === action.omenId);
       return omen ? omen.desc : '';
@@ -81,6 +91,16 @@
     });
     return set;
   }
+  /* 预兆组合：id 与求解器里的动作 id 一一对应，方便按「走完全程」排序 */
+  const OMEN_COMBOS = [
+    { omenId: 'omen_sinistral_exalt', currency: 'exalted', solverId: 'exalt_left' },
+    { omenId: 'omen_dextral_exalt', currency: 'exalted', solverId: 'exalt_right' },
+    { omenId: 'omen_greater_exalt', currency: 'exalted', solverId: 'exalt_two' },
+    { omenId: 'omen_sinistral_erasure', currency: 'chaos', solverId: 'chaos_left' },
+    { omenId: 'omen_dextral_erasure', currency: 'chaos', solverId: 'chaos_right' },
+    { omenId: 'omen_whittling', currency: 'chaos', solverId: 'whittling' },
+  ];
+
   function candidateActions(item, targets) {
     const list = [];
     const space = E.canAdd(item, 'prefix') || E.canAdd(item, 'suffix');
@@ -100,7 +120,15 @@
     } else if (item.rarity === 'rare') {
       if (space) list.push({ type: 'exalted' });
       if (item.affixes.length) list.push({ type: 'chaos' }, { type: 'annulment' });
-      (D.omens || []).forEach((omen) => list.push({ type: 'omen', omenId: omen.id }));
+      /* 只建模「有价格 + 规则确定」的预兆组合：以前把所有预兆当候选，
+       * 但激活预兆不改变物品，抽样恒为 0 提升，等于 28 个死候选。 */
+      for (const combo of OMEN_COMBOS) {
+        if (typeof E.omenAvailability === 'function' && E.omenAvailability(item, combo.omenId)) continue;
+        // 这里只判断「有没有价格」，用默认价格表即可；真正计价在 analyze 里带上实时价格
+        const cost = E.actionCost({ type: 'omen_exec', omenId: combo.omenId, currency: combo.currency });
+        if (!(Number(cost) > 0)) continue;
+        list.push({ type: 'omen_exec', omenId: combo.omenId, currency: combo.currency, solverId: combo.solverId });
+      }
       const groups = targetGroupSet(targets);
       (D.essences || []).forEach((e) => {
         if (!e.perfect) return;
@@ -111,6 +139,7 @@
       });
     }
     return list.filter((a) => {
+      if (a.type === 'omen_exec') return !E.omenAvailability(item, a.omenId);
       if (a.type === 'omen') return !E.omenAvailability(item, a.omenId);
       if (a.type === 'essence') {
         const e = (D.essences || []).find((x) => x.id === a.essenceId);
@@ -181,6 +210,16 @@
     const samples = Math.max(40, Math.min(400, Number(opts.samples) || 160));
     const targetIds = (targets || []).map((t) => t.modId);
     const baseEval = E.evaluate(item, targets);
+    /* 目标已经全部命中时，任何通货都只会变差：直接给「收手」，不再列动作 */
+    if (baseEval.complete) {
+      return {
+        eval: baseEval,
+        recommendations: [],
+        plan: { diagnosis: '目标完成', steps: [], finish: '结束制作；数值不满可以用神圣石。' },
+        diagnosis: '目标已完成。可以停止，或继续追求更高数值。',
+        expected: { etc: 0, pSuccess: 1, best: null, alternatives: [], states: 0, converged: true, unreachable: false, matched: baseEval.matchedCount, targetCount: baseEval.targetCount },
+      };
+    }
     const actions = candidateActions(item, targets);
     const recommendations = [];
 
@@ -277,10 +316,14 @@
      * 这一步把顾问从「哪步不亏」升级成「哪条路最便宜」。 */
     const expected = solverPlan(item, targets, prices, opts);
     if (expected && expected.alternatives && expected.alternatives.length) {
-      const byType = new Map();
-      for (const a of expected.alternatives) if (!byType.has(a.type)) byType.set(a.type, a);
+      /* 注意：这里要用完整备选列表做匹配，之前只取前 4 条，
+       * 导致排在后面的预兆组合拿不到「走完全程」的期望而在排序里掉队。 */
+      const allAlts = expected.alternatives;
+      const byId = new Map();
+      for (const a of allAlts) if (!byId.has(a.id)) byId.set(a.id, a);
       recommendations.forEach((r) => {
-        const a = byType.get(r.action.type);
+        const key = r.action.solverId || r.action.type;
+        const a = byId.get(key) || byId.get(r.action.type);
         if (a && a.total != null) {
           r.totalExpected = a.total;
           r.solverId = a.id;

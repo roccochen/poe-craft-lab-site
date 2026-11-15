@@ -949,6 +949,11 @@
         return e ? e.cost : 0;
       }
       case 'omen_clear': return 0;
+      case 'omen_exec': {
+        const om = (D.omens || []).find((x) => x.id === action.omenId);
+        const inner = action.currency ? actionCost({ type: action.currency }, prices) : 0;
+        return (om ? Number(om.cost) || 0 : 0) + inner;
+      }
       case 'omen': {
         const omen = (D.omens || []).find((x) => x.id === action.omenId);
         if (!omen || omen.cost == null) return 0;
@@ -1008,7 +1013,7 @@
     // 腐化后普通通货与精华都不能再用；符文与查看类操作另行判断。
     const CORRUPT_BLOCKED = [
       'transmute', 'alteration', 'augmentation', 'regal', 'alchemy', 'chaos',
-      'exalted', 'annulment', 'divine', 'essence', 'omen', 'whetstone', 'scrap', 'desecrate',
+      'exalted', 'annulment', 'divine', 'essence', 'omen', 'omen_exec', 'whetstone', 'scrap', 'desecrate',
     ];
     if (next.corrupted && CORRUPT_BLOCKED.indexOf(action.type) !== -1) {
       return fail('物品已腐化，不能使用普通通货 / 精华。');
@@ -1388,6 +1393,26 @@
         next.meta.omens = [];
         message = '取消 ' + n + ' 个已激活预兆（不退还费用）。';
         break;
+      }
+      case 'omen_exec': {
+        const om = (D.omens || []).find((x) => x.id === action.omenId);
+        if (!om) return fail('未知预兆。');
+        if (!action.currency) return fail('缺少要搭配的通货。');
+        // 用「激活 + 执行」两步复用现有规则：先把预兆挂上，再递归调用通货本身
+        const blocked = omenAvailability(next, om.id);
+        if (blocked) return fail(blocked);
+        if (CORRUPT_BLOCKED.indexOf(action.currency) !== -1 && next.corrupted) return fail('物品已腐化');
+        next.meta = next.meta || { multimod: false };
+        next.meta.omens = armedOmens(next).concat([{
+          id: om.id, name: om.name, effect: om.effect,
+          appliesTo: om.appliesTo || null, cost: om.cost,
+        }]);
+        const inner = applyAction(next, { type: action.currency }, ctx);
+        if (inner.error) return inner;
+        inner.cost = Number(inner.cost || 0) + (Number(om.cost) || 0);
+        inner.message = '（预兆：' + om.name + '）' + (inner.message || '');
+        inner.omenId = om.id;
+        return inner;
       }
       case 'omen': {
         const omen = (D.omens || []).find((x) => x.id === action.omenId);
