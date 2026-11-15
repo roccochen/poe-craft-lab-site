@@ -1074,3 +1074,44 @@ h1, h2, h3, p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* 武器细分（底子分类） */
+.weapon-tabs { gap: 5px; margin-bottom: 9px; }
+.weapon-tabs[hidden] { display: none; }
+.weapon-tabs button {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  background: rgba(16, 21, 31, .55);
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.weapon-tabs button em {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 9px;
+  color: var(--muted-2);
+}
+.weapon-tabs button:hover { border-color: var(--line-2); color: var(--text); }
+.weapon-tabs button.active {
+  border-color: rgba(200, 167, 106, .45);
+  background: rgba(200, 167, 106, .12);
+  color: var(--gold-2);
+}
+.weapon-tabs button.active em { color: var(--gold-dim); }
+
+/* 流放 1 入口已关闭：只显示当前游戏，不是可点的切换 */
+.game-switch .game-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  color: var(--gold-2);
+  background: rgba(200, 167, 106, .12);
+  border: 1px solid rgba(200, 167, 106, .38);
+  box-shadow: inset 0 0 10px rgba(200, 167, 106, .06);
+  cursor: default;
+}

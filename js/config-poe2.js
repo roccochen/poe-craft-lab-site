@@ -15,6 +15,9 @@
   const ESSENCE_FIELDS = ['cost', 'name', 'tierName', 'color', 'byCat', 'bySlot'];
   const FOSSIL_FIELDS = ['cost', 'name', 'more', 'fewer', 'block', 'desc', 'sanctified'];
   const BENCH_FIELDS = ['cost', 'name', 'text', 'v', 'tags', 'affix', 'group', 'slots', 'def'];
+  const RUNE_FIELDS = ['cost', 'name', 'color', 'text', 'v', 'v2', 'tags', 'group', 'slots'];
+
+  function allRunes() { return (D.runes || []).concat(D.soulCores || []); }
 
   function snapshot() {
     return {
@@ -25,6 +28,7 @@
       })),
       fossils: D.fossils.map((f) => clone(f)),
       bench: D.bench.map((b) => clone(b)),
+      runes: allRunes().map((r) => clone(r)),
     };
   }
   const BUILTIN = snapshot();
@@ -110,6 +114,28 @@
       });
     }
 
+    if (isObj(payload.runes)) {
+      Object.keys(payload.runes).forEach((id) => {
+        const target = allRunes().find((r) => r.id === id);
+        if (!target) { warnings.push('未知符文：' + id); return; }
+        const patch = payload.runes[id];
+        if (isNum(patch)) { target.cost = patch; return; }
+        if (!isObj(patch)) { warnings.push('符文配置无效：' + id); return; }
+        RUNE_FIELDS.forEach((field) => {
+          if (patch[field] === undefined) return;
+          if (field === 'cost') {
+            if (isNum(patch.cost)) target.cost = patch.cost;
+            else warnings.push('符文成本无效：' + id);
+          } else if (field === 'v' || field === 'v2') {
+            if (Array.isArray(patch[field])) target[field] = clone(patch[field]);
+            else warnings.push('符文数值无效：' + id + '.' + field);
+          } else {
+            target[field] = clone(patch[field]);
+          }
+        });
+      });
+    }
+
     if (isObj(payload.settings)) {
       if (payload.settings.samples != null && !isNum(payload.settings.samples)) {
         warnings.push('样本数无效');
@@ -133,6 +159,7 @@
       }])),
       fossils: Object.fromEntries(D.fossils.map((f) => [f.id, clone(f)])),
       bench: Object.fromEntries(D.bench.map((b) => [b.id, clone(b)])),
+      runes: Object.fromEntries(allRunes().map((r) => [r.id, clone(r)])),
       settings: { samples: meta.samples || 160 },
     };
   }
@@ -154,6 +181,12 @@
     });
     BUILTIN.bench.forEach((src) => {
       const target = D.bench.find((b) => b.id === src.id);
+      if (!target) return;
+      Object.keys(target).forEach((key) => { delete target[key]; });
+      Object.assign(target, clone(src));
+    });
+    BUILTIN.runes.forEach((src) => {
+      const target = allRunes().find((r) => r.id === src.id);
       if (!target) return;
       Object.keys(target).forEach((key) => { delete target[key]; });
       Object.assign(target, clone(src));

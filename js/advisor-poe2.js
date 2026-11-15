@@ -11,7 +11,8 @@
   const ACTION_TITLE = {
     transmute: '蜕变石', augmentation: '增幅石', regal: '富豪石', alchemy: '点金石',
     chaos: '混沌石', exalted: '崇高石', annulment: '剥离石', divine: '神圣石',
-    omen: '预兆', essence: '精华',
+    omen: '预兆', essence: '精华', vaal: '瓦尔宝珠', whetstone: '磨刀石', scrap: '护甲片',
+    rune: '符文', rune_clear: '取出符文',
   };
   const ACTION_DETAIL = {
     transmute: '普通 → 1 词缀魔法，低成本起手。',
@@ -22,6 +23,11 @@
     exalted: '稀有物品新增 1 条词缀。',
     annulment: '魔法 / 稀有物品随机移除 1 条。',
     divine: '重掷所有词缀数值，不改变词缀组合。',
+    vaal: '腐化物品，结果随机；腐化后不能再使用普通通货。',
+    whetstone: '提升武器品质，最高 20%。',
+    scrap: '提升护甲 / 盾 / 法器品质，最高 20%。',
+    rune: '把符文插进插槽。',
+    rune_clear: '取出所有符文，恢复空插槽。',
   };
 
   function fmtCost(n) {
@@ -42,6 +48,10 @@
       const e = (D.essences || []).find((x) => x.id === action.essenceId);
       return e ? e.tierName + e.name + '精华' : '精华';
     }
+    if (action.type === 'rune') {
+      const r = (D.runes || []).concat(D.soulCores || []).find((x) => x.id === action.runeId);
+      return r ? r.name : '符文';
+    }
     return ACTION_TITLE[action.type] || action.type;
   }
   function actionDetail(action) {
@@ -53,14 +63,15 @@
       const e = (D.essences || []).find((x) => x.id === action.essenceId);
       return e ? e.tierName + e.name + '精华：魔法升稀有并保底一条。' : '';
     }
+    if (action.type === 'rune') {
+      const r = (D.runes || []).concat(D.soulCores || []).find((x) => x.id === action.runeId);
+      return r ? '插入' + r.name + '：' + (E.runeText ? E.runeText(r, E.getBase(item.baseId)) : r.text) + '。' : '';
+    }
     return ACTION_DETAIL[action.type] || '';
   }
   function essenceDescFor(e, item) {
-    const base = E.getBase(item.baseId);
-    if (!base) return null;
-    const cat = (base.slot === 'weapon' || base.slot === 'quiver') ? 'weapon'
-      : (base.slot === 'ring' || base.slot === 'amulet' || base.slot === 'belt') ? 'jewellery' : 'armour';
-    return (e.bySlot && e.bySlot[base.slot]) || (e.byCat && e.byCat[cat]) || null;
+    // 正式数据：效果按部位（武器再看类别）给，统一走引擎的选取逻辑
+    return E.essenceDescForItem ? E.essenceDescForItem(item, e) : null;
   }
   function targetGroupSet(targets) {
     const set = {};
@@ -79,10 +90,10 @@
       if (space) list.push({ type: 'augmentation' });
       list.push({ type: 'regal' }, { type: 'alchemy' });
       if (item.affixes.length) list.push({ type: 'annulment' });
-      const groups = targetGroupSet(targets);
+      // 正式精华的效果没有 group 字段：只要该物品能用，就纳入候选，
+      // 交给蒙特卡洛估计比较收益，而不是按组名硬匹配。
       (D.essences || []).forEach((e) => {
-        const desc = essenceDescFor(e, item);
-        if (!desc || !groups[desc.group]) return;
+        if (!essenceDescFor(e, item)) return;
         if (typeof E.essenceAvailability === 'function' && E.essenceAvailability(item, e)) return;
         list.push({ type: 'essence', essenceId: e.id });
       });
@@ -113,6 +124,7 @@
     opts = opts || {};
     const prices = opts.prices || {};
     const samples = Math.max(40, Math.min(400, Number(opts.samples) || 160));
+    const targetIds = (targets || []).map((t) => t.modId);
     const baseEval = E.evaluate(item, targets);
     const actions = candidateActions(item, targets);
     const recommendations = [];
@@ -125,7 +137,8 @@
       let valid = 0;
       for (let i = 0; i < samples; i++) {
         const rng = E.makeRng((Number(opts.seed) || 1) + actionIndex * 100003 + i * 7919);
-        const res = E.applyAction(item, action, { prices, rng });
+        // 把目标传进引擎：新词缀会优先落在目标还没命中的一侧，和真实做装思路一致。
+        const res = E.applyAction(item, action, { prices, rng, targets: targetIds });
         if (res.error) continue;
         valid++;
         const ev = E.evaluate(res.item, targets);
@@ -237,6 +250,7 @@
     const maxSteps = Math.max(10, Number(opts.maxSteps) || 40);
     const budget = Math.max(100, Number(opts.budget) || 2500);
     const prices = opts.prices || {};
+    const targetIds = (targets || []).map((t) => t.modId);
     let wins = 0;
     let totalCost = 0;
     let winCost = 0;
@@ -253,7 +267,7 @@
         if (ev.complete) { success = true; break; }
         const action = chooseRouteAction(cur, ev, rng, budget, spent, targets);
         if (!action) break;
-        const res = E.applyAction(cur, action, { prices, rng });
+        const res = E.applyAction(cur, action, { prices, rng, targets: targetIds });
         if (res.error) break;
         cur = res.item;
         spent += res.cost || 0;
@@ -276,6 +290,6 @@
     };
   }
 
-  global.PoE2Advisor = { analyze, simulateRoute, actionTitle, fmtCost };
+  global.PoE2Advisor = { analyze, simulateRoute, actionTitle, fmtCost, candidateActions, essenceDescFor };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.PoE2Advisor;
 })(typeof window !== 'undefined' ? window : globalThis);

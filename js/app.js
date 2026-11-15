@@ -2,8 +2,10 @@
 (function () {
   'use strict';
 
-  const GAME_ID = new URLSearchParams(location.search).get('game') === 'poe2' ? 'poe2' : 'poe1';
-  const GAME = (window.PoEGames || {})[GAME_ID] || (window.PoEGames || {}).poe1;
+  /* 流放 1 入口已关闭：URL 里的 game 参数不再生效，页面只运行流放 2 */
+  const REQUESTED_GAME = new URLSearchParams(location.search).get('game');
+  const GAME_ID = 'poe2';
+  const GAME = (window.PoEGames || {})[GAME_ID] || (window.PoEGames || {}).poe2;
   const IS_POE2 = GAME_ID === 'poe2';
   const D = GAME.data;
   const E = GAME.engine;
@@ -16,7 +18,7 @@
   const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
   const iconForSlot = {
     helmet: '盔', body: '甲', gloves: '手', boots: '靴', shield: '盾', focus: '焦',
-    weapon: '刃', ring: '戒', amulet: '链', belt: '带', quiver: '袋',
+    weapon: '刃', ring: '戒', amulet: '链', belt: '带', quiver: '袋', jewel: '珠', charm: '符',
   };
   const TAG_CN = {};
   D.harvestTags.forEach((t) => { TAG_CN[t.id] = t.name; });
@@ -31,6 +33,8 @@
     chaos: '混', exalted: '崇', annulment: '剥', scour: '洗', essence: '精', fossil: '化',
     harvest: '庄', bench: '艺', lock_chaos: '锁', lock_scour: '锁', lock_exalt: '锁',
     multimod: '多', manual: '同', divine: '圣', omen: '兆',
+    vaal: '瓦', whetstone: '磨', scrap: '甲', rune: '符', rune_clear: '符',
+    desecrate: '渎', desecrate_pick: '渎',
   };
 
   /* ------------------------------------------------------------------ state */
@@ -69,6 +73,7 @@
       fossilSelection: [],
       harvestMode: 'reforge',
       essenceTier: 7,
+      weaponFamily: 'all',
       settings: baseSettings(),
       routeStats: null,
       analysisNonce: 0,
@@ -107,9 +112,12 @@
         .filter((d) => d && d.baseId && E.getBase(d.baseId)).slice(-8).map((d, i) => { const copy = E.clone(d); copy.savedAt = copy.savedAt || (Date.now() + i); return copy; });
       state.donor = state.donors.find((d) => parsed.donor && d.savedAt === parsed.donor.savedAt) || state.donors[state.donors.length - 1] || null;
       state.view = ['gear', 'targets', 'craft', 'log'].indexOf(parsed.view) !== -1 ? parsed.view : 'gear';
+      state.weaponFamily = 'all';
       state.collapsed = Object.assign({ presets: false, base: false, targets: false, actions: false, log: false, plan: false }, parsed.collapsed || {});
       state.item.meta = state.item.meta || { multimod: false };
-      E.syncMetaFlags(state.item);
+      // 可选引擎能力：缺了也不能让整个存档被丢掉（曾经 PoE2 就是因为少了
+      // syncMetaFlags 抛错，catch 后回退默认状态，刷新即丢档）。
+      if (typeof E.syncMetaFlags === 'function') E.syncMetaFlags(state.item);
       state.item.influences = state.item.influences || [];
       state.item.affixes = state.item.affixes || [];
       state.item.ilvl = state.item.ilvl || E.getBase(state.item.baseId).ilvl;
@@ -172,6 +180,15 @@
       el.style.transition = 'all .18s ease';
       setTimeout(() => el.remove(), 200);
     }, ms || 3200);
+  }
+  /* 底子显示名：poe2db 有官方中文名就用中文，英文名保留为副标题 */
+  function baseLabel(base) {
+    if (!base) return '';
+    return base.nameZh || base.name;
+  }
+  function baseSubLabel(base) {
+    if (!base) return '';
+    return base.nameZh ? base.name : '';
   }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -277,12 +294,12 @@
           '<div class="aside-metric"><span>抗性</span><b>' + [stats.fire, stats.cold, stats.light].map((v) => Math.round(v || 0) + '%').join(' / ') + '</b></div>';
       }
       el.innerHTML = rightHead('STEP 01', '先确定底子', '底子决定能出现哪些词缀。选错底子，后面再怎么洗也做不出目标。') +
-        '<div class="aside-item-card"><span class="aside-kicker">当前底子</span><b>' + esc(base.name) + '</b><em>' + esc(base.en) + ' · iLv ' + state.item.ilvl + '</em>' +
+        '<div class="aside-item-card"><span class="aside-kicker">当前底子</span><b>' + esc(baseLabel(base)) + '</b><em>' + esc(baseSubLabel(base) || base.en || '') + ' · iLv ' + state.item.ilvl + '</em>' +
         '<div class="aside-metrics">' + statHtml + '</div></div>' +
         '<div class="aside-line"><span>槽位</span><b>' + esc(slotName(base.slot)) + '</b></div>' +
         '<div class="aside-line"><span>影响</span><b>' + esc(inf) + '</b></div>' +
         '<div class="aside-line"><span>已设目标</span><b>' + state.targets.length + ' 条</b></div>' +
-        '<div class="aside-note">不想从零选？回到装备页顶部，点一个「快速模板」，底子和目标会一起填好。</div>' +
+        '<div class="aside-note">没有想要的底子？先换上面的槽位，或用搜索输入中文 / 英文名。</div>' +
         '<button class="btn gold wide" type="button" data-open-view="targets">去设置目标 →</button>' +
         '<button class="btn ghost wide" type="button" data-open-view="craft">直接开始做装</button>' +
         '<div class="aside-guide"><b>选底子时先看这三点</b><ul><li>防御类型决定基础护甲 / 闪避 / ES。</li><li>底子的物品等级决定能出到哪一档词缀。</li><li>影响词缀很强，但只有对应影响才会出现。</li></ul></div>';
@@ -327,8 +344,6 @@
     const views = ['gear', 'targets', 'craft', 'log'];
     if (views.indexOf(state.view) === -1) state.view = 'gear';
     $$('.view').forEach((v) => { v.hidden = v.dataset.viewPanel !== state.view; });
-    const templates = $('#section-presets');
-    if (templates) templates.hidden = state.view !== 'gear';
     renderRightPanel();
     $$('#workspace-rail [data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
     const foot = $('#rail-foot');
@@ -367,7 +382,7 @@
     if (state.pendingResult) {
       next.textContent = '先确认这一步的实际结果，再继续';
     } else if (state.view === 'gear') {
-      next.textContent = '先选底子，或者点一个快速模板';
+      next.textContent = '先选槽位和底子';
     } else if (state.view === 'targets') {
       next.textContent = '设置 2–3 条最想要的目标词缀';
     } else if (state.view === 'log') {
@@ -403,7 +418,7 @@
       '</div>' +
       '</div>' +
       '<div class="modal-foot"><button class="btn ghost" data-close type="button">先看看</button>' +
-      '<button class="btn gold" id="guide-start" type="button">从当前模板开始</button></div>';
+      '<button class="btn gold" id="guide-start" type="button">从当前底子开始</button></div>';
     openModal(html);
     $$('#modal-root [data-close]').forEach((b) => { b.onclick = closeModal; });
     const start = $('#guide-start');
@@ -423,6 +438,7 @@
       b.onclick = () => {
         state.slot = b.dataset.slot;
         state.baseSearch = '';
+        state.weaponFamily = 'all';
         $('#base-search').value = '';
         renderSlotTabs();
         renderBases();
@@ -432,6 +448,8 @@
   function baseStatText(b) {
     if (b.weapon) {
       const w = b.weapon;
+      /* 法杖等底子在游戏表里没有伤害数值（damageMissing）：不编造 DPS */
+      if (!Array.isArray(w.phys) || !w.aps) return '伤害数据缺失 · iLvl ' + b.ilvl;
       const dps = ((w.phys[0] + w.phys[1]) / 2) * w.aps;
       return 'pDPS ' + Math.round(dps) + ' · ' + w.aps + ' 攻速';
     }
@@ -440,14 +458,84 @@
     }
     return 'iLvl ' + b.ilvl;
   }
+  /* 武器细分：PoE2 用 weapon.class[0]，PoE1 用 weapon.type */
+  const WEAPON_FAMILY_LABEL = {
+    poe1: { sword: '剑', axe: '斧', wand: '短杖', sceptre: '权杖', dagger: '匕首', claw: '爪', bow: '弓', staff: '长杖' },
+    poe2: {
+      sword: '剑', axe: '斧', mace: '锤', two_hand_mace: '双手锤', spear: '矛', claw: '爪',
+      dagger: '匕首', flail: '连枷', quarterstaff: '细杖', staff: '长杖', wand: '法杖',
+      sceptre: '权杖', bow: '弓', crossbow: '十字弓', talisman: '魔符',
+    },
+  };
+  const WEAPON_FAMILY_ORDER = {
+    poe1: ['sword', 'axe', 'wand', 'sceptre', 'dagger', 'claw', 'bow', 'staff'],
+    poe2: ['sword', 'axe', 'mace', 'two_hand_mace', 'spear', 'dagger', 'claw', 'flail',
+      'quarterstaff', 'staff', 'wand', 'sceptre', 'bow', 'crossbow', 'talisman'],
+  };
+  function weaponFamily(base) {
+    const w = (base && base.weapon) || {};
+    if (w.type) return String(w.type);
+    if (Array.isArray(w.class) && w.class.length) return String(w.class[0]);
+    return '';
+  }
+  function weaponFamilyLabel(key) {
+    const map = WEAPON_FAMILY_LABEL[GAME_ID] || {};
+    return map[key] || key;
+  }
+  function weaponFamilies() {
+    const counts = new Map();
+    D.bases.forEach((b) => {
+      if (b.slot !== 'weapon') return;
+      const key = weaponFamily(b);
+      if (!key) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const order = WEAPON_FAMILY_ORDER[GAME_ID] || [];
+    return Array.from(counts.keys())
+      .sort((a, b) => {
+        const ia = order.indexOf(a) === -1 ? 99 : order.indexOf(a);
+        const ib = order.indexOf(b) === -1 ? 99 : order.indexOf(b);
+        return ia - ib || a.localeCompare(b);
+      })
+      .map((key) => ({ key, label: weaponFamilyLabel(key), count: counts.get(key) }));
+  }
+  function renderWeaponTabs() {
+    const el = $('#weapon-tabs');
+    if (!el) return;
+    const families = state.slot === 'weapon' ? weaponFamilies() : [];
+    if (families.length < 2) {
+      el.hidden = true;
+      el.innerHTML = '';
+      state.weaponFamily = 'all';
+      return;
+    }
+    if (state.weaponFamily !== 'all' && !families.some((f) => f.key === state.weaponFamily)) state.weaponFamily = 'all';
+    const total = families.reduce((n, f) => n + f.count, 0);
+    el.hidden = false;
+    el.innerHTML = [{ key: 'all', label: '全部', count: total }].concat(families).map((f) =>
+      '<button type="button" data-weapon="' + f.key + '" class="' + (state.weaponFamily === f.key ? 'active' : '') + '">' +
+      esc(f.label) + '<em>' + f.count + '</em></button>'
+    ).join('');
+    $$('#weapon-tabs button').forEach((b) => {
+      b.onclick = () => {
+        state.weaponFamily = b.dataset.weapon;
+        renderWeaponTabs();
+        renderBases();
+      };
+    });
+  }
   function renderBases() {
+    renderWeaponTabs();
+    const family = state.slot === 'weapon' && state.weaponFamily !== 'all' ? state.weaponFamily : '';
     const q = (state.baseSearch || '').trim().toLowerCase();
     const list = D.bases.filter((b) => {
       if (b.slot !== state.slot) return false;
+      if (family && weaponFamily(b) !== family) return false;
       if (!q) return true;
-      return (b.name + ' ' + b.en + ' ' + b.id).toLowerCase().indexOf(q) !== -1;
+      return (b.name + ' ' + (b.nameZh || '') + ' ' + b.en + ' ' + b.id).toLowerCase().indexOf(q) !== -1;
     });
-    $('#base-count').textContent = list.length + ' 个';
+    const slotTotal = family ? D.bases.filter((b) => b.slot === state.slot).length : 0;
+    $('#base-count').textContent = list.length + (family ? ' / ' + slotTotal : '') + ' 个';
     if (!list.length) {
       $('#base-list').innerHTML = '<div class="target-empty">没有匹配的底子，换个关键词试试。</div>';
       return;
@@ -456,7 +544,8 @@
       const active = b.id === state.baseId;
       return '<button type="button" class="base-card ' + (active ? 'active' : '') + '" data-base="' + b.id + '" title="' + esc(b.implicit || b.en) + '">' +
         '<span class="base-glyph">' + (iconForSlot[b.slot] || (b.slot || '◆').slice(0, 1).toUpperCase()) + '</span>' +
-        '<span class="base-main"><span class="bn">' + esc(b.name) + '</span><span class="be">' + esc(b.en) + ' · i' + b.ilvl + '</span></span>' +
+        '<span class="base-main"><span class="bn">' + esc(baseLabel(b)) + '</span><span class="be">' + esc(baseSubLabel(b) || b.en) + ' · ' +
+          (b.slot === 'weapon' ? esc(weaponFamilyLabel(weaponFamily(b))) + ' · ' : '') + 'i' + b.ilvl + '</span></span>' +
         '<span class="base-stats">' + esc(baseStatText(b)) + '</span></button>';
     }).join('');
     $$('#base-list [data-base]').forEach((b) => {
@@ -478,7 +567,7 @@
       $('#ilvl-input').value = state.ilvl;
       save();
       renderAll();
-      toast('已切换底子：' + base.name, 'success');
+      toast('已切换底子：' + baseLabel(base), 'success');
     };
     if (state.item.affixes.length || state.log.length || state.spent > 0) {
       openConfirm('切换底子？', '切换底子会重置当前物品、制作记录和花费统计。目标词缀中不适用的会被移除。', apply);
@@ -501,7 +590,7 @@
     $('#target-count').textContent = state.targets.length + ' / 6';
     const el = $('#target-list');
     if (!state.targets.length) {
-      el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方添加，或直接点一个快速模板。</div>';
+      el.innerHTML = '<div class="target-empty">还没有目标词缀。<br>从下方列表里挑 2–3 条添加。</div>';
       renderTargetSummary();
       renderRightPanel();
       return;
@@ -636,32 +725,6 @@
     renderTargets(); renderTargetPool(); renderAdvisor();
     toast('已添加目标：' + def.name);
   }
-  function loadPreset(preset) {
-    if (state.autoRunning) stopAuto('已手动载入模板，连续执行停止。');
-    const apply = () => {
-      state.baseId = preset.baseId;
-      state.ilvl = preset.ilvl || 86;
-      state.influences = (preset.influences || []).slice();
-      state.slot = E.getBase(preset.baseId).slot;
-      state.item = E.createItem(preset.baseId, { ilvl: state.ilvl, influences: state.influences });
-      state.targets = preset.targets.map((t) => Object.assign({}, t))
-        .filter((t) => E.targetEligibleOnBase(t.modId, state.baseId, state.influences, state.ilvl));
-      state.fossilSelection = [];
-      state.tab = 'basic';
-      state.targetSide = 'prefix';
-      resetProgress();
-      $('#ilvl-input').value = state.ilvl;
-      save();
-      renderAll();
-      switchView('targets');
-      toast('已载入模板：' + preset.name + '，下一步可以看目标或开始做装。', 'success');
-    };
-    if (state.item.affixes.length || state.log.length || state.spent > 0) {
-      openConfirm('载入模板？', '当前物品和制作记录会被重置，目标词缀会替换为模板内容。', apply);
-    } else {
-      apply();
-    }
-  }
   function renderTargetSummary() {
     const list = $('#target-summary-list');
     const empty = $('#target-summary-empty');
@@ -678,16 +741,6 @@
     }).join('');
     if (empty) empty.hidden = targets.length > 0;
   }
-  function renderPresets() {
-    $('#preset-list').innerHTML = D.presets.map((p) =>
-      '<button class="preset" type="button" data-preset="' + p.id + '"><b>' + esc(p.name) + '</b><span>' + esc(p.desc) + '</span></button>'
-    ).join('');
-    $$('#preset-list [data-preset]').forEach((b) => {
-      const preset = D.presets.find((p) => p.id === b.dataset.preset);
-      b.onclick = () => loadPreset(preset);
-    });
-  }
-
   /* ------------------------------------------------------------------ render: item */
   function renderInfluences() {
     const selected = state.item.influences || [];
@@ -738,6 +791,17 @@
     $('#item-meta').textContent = '物品等级 ' + item.ilvl + (item.influences.length ? ' · ' + item.influences.length + ' 个影响' : '') + (item.corrupted ? ' · 已腐化' : '') + ((item.quality || 0) ? ' · 品质 +' + item.quality + '%' : '');
     const infNames = item.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).filter(Boolean).join(' / ');
     const socketBar = (item.sockets && item.sockets.length) ? '<div class="item-sockets">' + socketHtml(item) + '</div>' : '';
+    // PoE2 符文：item.sockets 是数量、item.runes 是已插入的 id 列表（PoE1 没有这两个字段）
+    let runeBar = '';
+    if (Array.isArray(item.runes) && typeof item.sockets === 'number') {
+      const chips = item.runes.map((id) => {
+        const r = (D.runes || []).concat(D.soulCores || []).find((x) => x.id === id);
+        return r ? '<span class="item-rune" style="--rc:' + r.color + '" title="' + esc(r.name) + '">' + esc(E.runeText ? E.runeText(r, E.getBase(state.item.baseId)) : r.text) + '</span>' : '';
+      }).filter(Boolean).join('');
+      if (chips || item.sockets > 0) {
+        runeBar = '<div class="item-runes">' + (chips || '<span class="item-rune-empty">插槽空闲 ' + item.sockets + '</span>') + '</div>';
+      }
+    }
     const modsHtml = item.affixes.length
       ? '<ul class="item-mod-list">' + item.affixes.map((a) => {
         const tagBits = [];
@@ -747,18 +811,28 @@
         if (a.meta) tagBits.push('meta');
         if (a.veiled) tagBits.push('隐秘');
         if (a.fractured) tagBits.push('破裂');
+        if (a.desecrated) tagBits.push('深渊');
         return '<li class="item-mod ' + a.affix + (a.crafted ? ' crafted' : '') + (a.fractured ? ' fractured' : '') + (a.essence ? ' essence' : '') + (a.veiled ? ' veiled' : '') + '">' +
           '<span class="mod-text">' + mdText(a.text) + '</span>' +
           '<span class="mod-tag">' + esc(tagBits.join(' · ')) + '</span></li>';
       }).join('') + '</ul>'
       : '<div class="item-open item-start"><b>还没有词缀，先做第一步</b><p>看「现在推荐这样做」，点「执行这一步」；也可以从下方通货里选一个起手。</p><button class="btn tiny ghost" id="item-guide" type="button">看新手指南</button></div>';
     const implicitLines = [];
-    if (item.corruptedImplicit) {
+    if (Array.isArray(item.implicitMods) && item.implicitMods.length) {
+      item.implicitMods.forEach((m) => {
+        implicitLines.push('<div class="item-implicit corrupted-implicit">腐化基底：' + esc(m.text) + '</div>');
+      });
+    } else if (item.corruptedImplicit) {
       implicitLines.push('<div class="item-implicit corrupted-implicit">腐化基底：' + esc(item.corruptedImplicit) + '</div>');
     } else {
       if (item.eldritch && item.eldritch.exarch) implicitLines.push('<div class="item-implicit eldritch-exarch">灼热基底：' + esc(item.eldritch.exarch.text) + '</div>');
       if (item.eldritch && item.eldritch.eater) implicitLines.push('<div class="item-implicit eldritch-eater">吞噬基底：' + esc(item.eldritch.eater.text) + '</div>');
       if (!item.eldritch && base.implicit) implicitLines.push('<div class="item-implicit">' + esc(base.implicit) + '</div>');
+    }
+    if (item.meta && Array.isArray(item.meta.omens)) {
+      item.meta.omens.forEach((o) => {
+        implicitLines.push('<div class="item-implicit" style="color:#d9c98b">已激活预兆：' + esc(o.name) + '</div>');
+      });
     }
     const implicitHtml = implicitLines.length ? implicitLines.join('') + '<div class="item-sep"></div>' : '';
     const openBits = [];
@@ -766,10 +840,10 @@
     if (ev.openSuffix) openBits.push('空后缀 ' + ev.openSuffix);
     $('#item-card').className = 'item-card rarity-' + item.rarity + (item.corrupted ? ' corrupted' : '');
     $('#item-card').innerHTML =
-      '<div class="item-header"><div class="item-name">' + esc(base.name) + '</div>' +
+      '<div class="item-header"><div class="item-name">' + esc(baseLabel(base)) + '</div>' +
       '<div class="item-en">' + esc(base.en) + '</div></div>' +
       '<div class="item-sep"></div>' +
-      implicitHtml + socketBar +
+      implicitHtml + socketBar + runeBar +
       (infNames ? '<div class="item-implicit" style="color:var(--purple)">影响：' + esc(infNames) + '</div><div class="item-sep"></div>' : '') +
       '<div class="item-body">' + modsHtml +
       (openBits.length ? '<div class="item-open">' + openBits.join(' · ') + '</div>' : '') +
@@ -983,14 +1057,15 @@
     if (type === 'harvest_remove' || type === 'harvest_add' || type === 'harvest_augment') return '庄园';
     if (type === 'meta') return 'meta';
     if (type === 'vaal') return '腐化';
-    if (type === 'scrap' || type === 'whetstone') return '品质';
+    if (type === 'desecrate' || type === 'desecrate_pick') return '深渊';
+    if (type === 'scrap' || type === 'whetstone' || type === 'catalyst') return '品质';
+    if (type === 'rune' || type === 'rune_clear') return '插槽';
     if (type === 'awakener') return '势力合成';
     if (type === 'aisling' || type === 'unveil' || type === 'veiled_chaos' || type === 'veiled_exalt') return '隐秘';
     if (type === 'eldritch' || type === 'orb_conflict') return 'Eldritch';
     if (type === 'influence_exalt') return '势力';
     if (type === 'jeweller' || type === 'fusing' || type === 'chromatic') return '插槽';
     if (type === 'recombine') return '重组';
-    if (type === 'catalyst') return '品质';
     if (type.indexOf('tainted_') === 0) return 'Tainted';
     if (type === 'bench' || type === 'multimod' || type === 'bench_remove') return '收尾';
     return '操作';
@@ -1075,6 +1150,7 @@
     else if (state.tab === 'fossil') renderFossilActions(body);
     else if (state.tab === 'harvest') renderHarvestActions(body);
     else if (state.tab === 'omen') renderOmenActions(body);
+    else if (state.tab === 'rune') renderRuneActions(body);
     else if (state.tab === 'bench') renderBenchActions(body);
     else if (state.tab === 'sockets') renderSocketActions(body);
     else if (state.tab === 'catalyst') renderCatalystActions(body);
@@ -1091,6 +1167,8 @@
     body.innerHTML = '<div class="action-grid">' + basicActions().map((a) => {
       const reason = state.pendingResult ? '先确认上一步实际结果' : basicAvailability(a.type);
       const cost = E.actionCost({ type: a.type }, prices);
+      const poolNote = a.type === 'vaal' && typeof E.corruptionCandidates === 'function'
+        ? '（腐化基底池 ' + (E.corruptionCandidates(state.item) || []).length + ' 条）' : '';
       return '<button type="button" class="action-btn ' + (reason ? 'unavailable' : '') + '" data-basic="' + a.type + '" ' + (reason ? 'title="' + esc(reason) + '" aria-disabled="true"' : '') + '>' +
         '<span class="orb" style="--orb:' + a.color + '">' + a.short + '</span>' +
         '<span class="action-info"><span class="action-name">' + a.name + '<span class="phase-tag">' + actionPhase(a.type) + '</span></span><span class="action-desc">' + a.desc + '</span>' +
@@ -1105,27 +1183,55 @@
       };
     });
   }
+  /* 精华效果按部位（武器再看类别）给，统一走引擎的选取逻辑 */
   function essenceDescFor(e) {
-    const slot = E.getBase(state.item.baseId).slot;
-    const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
-      : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
-    return (e.bySlot && e.bySlot[slot]) || (e.byCat && e.byCat[cat]) || null;
+    if (typeof E.essenceDescForItem === 'function') return E.essenceDescForItem(state.item, e);
+    return null;
+  }
+  /* 精华档位：优先读取数据里的 essenceTiers（PoE2 是强效 / 完美两档），
+   * 没有时退回 PoE1 的七档。标签与档位数都由数据决定，避免两套游戏共用一套硬编码。 */
+  function essenceTierDefs() {
+    if (Array.isArray(D.essenceTiers) && D.essenceTiers.length) return D.essenceTiers;
+    return [
+      { tier: 1, name: '低语' }, { tier: 2, name: '呢喃' }, { tier: 3, name: '哭泣' }, { tier: 4, name: '哀嚎' },
+      { tier: 5, name: '尖啸' }, { tier: 6, name: '刺耳' }, { tier: 7, name: '震耳' },
+    ];
   }
   function renderEssenceActions(body) {
     const prices = priceOverrides();
-    const tiers = [
-      { tier: 1, name: '低语' }, { tier: 2, name: '呢喃' }, { tier: 3, name: '哭泣' }, { tier: 4, name: '哀嚎' }, { tier: 5, name: '尖啸' }, { tier: 6, name: '刺耳' }, { tier: 7, name: '震耳' },
-    ];
-    if (!tiers.some((t) => t.tier === state.essenceTier)) state.essenceTier = 7;
+    const tiers = essenceTierDefs();
     const all = D.essences.filter((e) => essenceDescFor(e));
-    const available = all.filter((e) => e.tier === state.essenceTier);
+    const hasEssences = all.length > 0;
+    // 记住的档位在当前底子上没有精华时（例如从小刀切到只支持强效的槽位），
+    // 自动落到第一个有内容的档位，而不是显示空面板。
+    const tierHas = (tier) => all.some((e) => (e.tier || 1) === tier);
+    const tierUsable = (tier) => all.some((e) => (e.tier || 1) === tier
+      && typeof E.essenceAvailability === 'function' && !E.essenceAvailability(state.item, e));
+    // 档位选择：优先停在一个「当前物品真的能用」的档位。
+    // 只做一次判断（不能用 if/else-if 分两步），否则首次进入时会把档位设成
+    // 内容存在但全被禁用的那一档，用户看到一整片灰色卡片。
+    const firstUsable = tiers.find((t) => tierUsable(t.tier));
+    const firstAny = tiers.find((t) => tierHas(t.tier));
+    if (!hasEssences) {
+      state.essenceTier = tiers[tiers.length - 1].tier;
+    } else if (!tierHas(state.essenceTier)) {
+      const pick = firstUsable || firstAny;
+      state.essenceTier = pick ? pick.tier : tiers[tiers.length - 1].tier;
+    } else if (!tierUsable(state.essenceTier) && firstUsable) {
+      state.essenceTier = firstUsable.tier;
+    } else if (!tierUsable(state.essenceTier) && !firstUsable && firstAny && firstAny.tier !== state.essenceTier) {
+      // 当前物品一档都用不了（例如精华只能用于魔法物品）时，回到第一个有内容的档位，
+      // 避免停在一个需要用户先猜的全灰档位，卡片数量也会因此不确定。
+      state.essenceTier = firstAny.tier;
+    }
+    const available = all.filter((e) => (e.tier || 1) === state.essenceTier);
     if (!available.length) {
       body.innerHTML = '<div class="action-none">当前底子没有可用的精华。箭袋等底子只支持通用通货 / 预兆。</div>';
       return;
     }
     body.innerHTML =
       '<div class="form-hint" style="margin-bottom:8px">' + esc(D.essenceHint || '精华会保底一条对应词缀；对魔法 / 稀有物品的具体规则由引擎决定。') + '</div>' +
-      '<div class="tabs tiny essence-tiers">' + tiers.map((t) => '<button type="button" data-essence-tier="' + t.tier + '" class="' + (state.essenceTier === t.tier ? 'active' : '') + '">' + t.name + ' · T' + t.tier + '</button>').join('') + '</div>' +
+      (tiers.length > 1 ? '<div class="tabs tiny essence-tiers">' + tiers.map((t) => '<button type="button" data-essence-tier="' + t.tier + '" class="' + (state.essenceTier === t.tier ? 'active' : '') + '">' + t.name + (t.suffix === false ? '' : ' · T' + t.tier) + '</button>').join('') + '</div>' : '') +
       (available.length ? '<div class="essence-grid">' + available.map((e) => {
         const desc = essenceDescFor(e);
         const preview = E.formatText(desc.text, desc.v.map((r) => (r[0] + r[1]) / 2));
@@ -1168,7 +1274,7 @@
       '<div class="fossil-bar"><div class="fossil-detail">' +
       (selectedFossils.length ? selectedFossils.map((f) => '<b>' + esc(f.name) + '</b>：' + esc(f.desc)).join('<br>') : '尚未选择化石。单枚化石也会重铸物品，多枚会叠加权重与屏蔽。') +
       '</div><button class="btn gold fossil-apply" id="apply-fossil" type="button" ' + (selected.length ? '' : 'disabled') + '>使用化石 <span style="opacity:.75">' + costText(E.actionCost({ type: 'fossil', fossilIds: selected }, prices)) + '</span></button></div>';
-    const fossilReason = selected.length ? E.fossilAvailability(state.item, selected) : '';
+    const fossilReason = selected.length && typeof E.fossilAvailability === 'function' ? E.fossilAvailability(state.item, selected) : '';
     if (fossilReason) { const btn = $('#apply-fossil'); if (btn) btn.disabled = true; }
     $$('#action-body [data-fossil]').forEach((b) => {
       b.onclick = () => {
@@ -1232,7 +1338,9 @@
       body.innerHTML = '<div class="action-none">这个游戏版本还没有配置预兆数据。</div>';
       return;
     }
-    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">预兆会改变下一条通货的结果；这里把「预兆 + 对应通货」组合成一步，方便直接推演。</div>' +
+    const doneCount = omens.filter((o) => o.implemented !== false).length;
+    body.innerHTML = '<div class="form-hint" style="margin-bottom:8px">预兆会改变下一条通货的结果；这里把「预兆 + 对应通货」组合成一步，方便直接推演。'
+      + '已建模 ' + doneCount + ' / ' + omens.length + ' 条，其余仅作参考、不可执行。</div>' +
       '<div class="action-grid">' + omens.map((omen) => {
         const reason = E.omenAvailability(state.item, omen.id);
         const cost = E.actionCost({ type: 'omen', omenId: omen.id }, prices);
@@ -1246,6 +1354,69 @@
         const reason = E.omenAvailability(state.item, b.dataset.omen);
         if (reason) { toast(reason, 'error'); return; }
         chooseTool({ type: 'omen', omenId: b.dataset.omen });
+      };
+    });
+  }
+  /* PoE2 符文面板：插槽信息 + 全部符文/灵魂核心，已插的显示在顶部并可一键清空。 */
+  function renderRuneActions(body) {
+    const item = state.item;
+    const runes = (D.runes || []).concat(D.soulCores || []);
+    const sockets = item.sockets || 0;
+    if (!runes.length || !sockets) {
+      body.innerHTML = '<div class="action-none">当前版本没有符文数据，或这个部位没有插槽。符文只能插在武器 / 护甲 / 盾 / 法器上。</div>';
+      return;
+    }
+    const prices = priceOverrides();
+    const used = item.runes || [];
+    const usedDefs = used.map((id) => E.runeDef(id)).filter(Boolean);
+    const clearReason = typeof E.clearSocketsAvailability === 'function' ? E.clearSocketsAvailability(item) : null;
+    body.innerHTML =
+      '<div class="form-hint" style="margin-bottom:8px">' + esc(D.runeHint || '符文插进插槽后效果固定，会计入物品属性。') + '</div>' +
+      '<div class="rune-slots"><span>插槽 ' + used.length + ' / ' + sockets + '</span>' +
+      (usedDefs.length ? usedDefs.map((r) => '<span class="rune-chip" style="--rc:' + r.color + '">' + esc(r.name) + '</span>').join('') : '<span class="rune-empty">空</span>') +
+      '<button class="btn tiny ghost" type="button" id="rune-clear" ' + (clearReason ? 'disabled title="' + esc(clearReason) + '"' : '') + '>清空插槽</button></div>' +
+      '<div class="action-grid">' + runes.map((r) => {
+        const reason = E.runeAvailability ? E.runeAvailability(item, r.id) : null;
+        const cost = E.actionCost({ type: 'rune', runeId: r.id }, prices);
+        const preview = E.runeText ? E.runeText(r, E.getBase(state.item.baseId)) : r.text;
+        return '<button type="button" class="action-btn ' + (reason ? 'unavailable' : '') + '" data-rune="' + r.id + '" ' + (reason ? 'title="' + esc(reason) + '" aria-disabled="true"' : '') + '>' +
+          '<span class="orb" style="--orb:' + r.color + '">符</span>' +
+          '<span class="action-info"><span class="action-name">' + esc(r.name) + '</span><span class="action-desc">' + esc(preview) + (reason ? '<span class="action-reason">' + esc(reason) + '</span>' : '') + '</span></span>' +
+          '<span class="action-cost"><b>' + costText(cost) + '</b></span></button>';
+      }).join('') + '</div>';
+    $$('#action-body [data-rune]').forEach((b) => {
+      b.onclick = () => {
+        const reason = E.runeAvailability ? E.runeAvailability(state.item, b.dataset.rune) : null;
+        if (reason) { toast(reason, 'error'); return; }
+        chooseTool({ type: 'rune', runeId: b.dataset.rune });
+      };
+    });
+    const clearBtn = $('#rune-clear');
+    if (clearBtn) clearBtn.onclick = () => chooseTool({ type: 'rune_clear' });
+  }
+  /* 深渊「保存之骨」三选一：把揭露出的 3 条深渊词缀做成卡片，
+   * 选中后走 desecrate_pick 真正加入物品。 */
+  function openDesecratePicker(choices) {
+    const cards = choices.map((c, i) =>
+      '<button class="desecrate-option" type="button" data-desecrate-pick="' + i + '">' +
+      '<span class="side-badge ' + c.affix + '">' + (c.affix === 'prefix' ? '前' : '后') + '</span>' +
+      '<span class="desecrate-text">' + mdText(c.text) + '</span>' +
+      '<span class="desecrate-tier">T' + c.tierRank + ' · iLvl ' + c.tierIlvl + '</span></button>'
+    ).join('');
+    const html =
+      '<div class="modal-head"><div><h3>选择一条深渊词缀</h3><p>保存之骨揭露了 ' + choices.length + ' 条深渊词缀，只能保留 1 条。</p></div>' +
+      '<button class="modal-close" data-close type="button">×</button></div>' +
+      '<div class="modal-body"><div class="desecrate-list">' + cards + '</div>' +
+      '<div class="modal-note">深渊词缀会占用一个前缀 / 后缀位，加入后仍可继续做装。</div></div>' +
+      '<div class="modal-foot"><button class="btn ghost" data-close type="button">放弃这一步</button></div>';
+    openModal(html);
+    $$('#modal-root [data-close]').forEach((b) => { b.onclick = () => { state.desecrateChoices = null; closeModal(); }; });
+    $$('#modal-root [data-desecrate-pick]').forEach((b) => {
+      b.onclick = () => {
+        const choice = choices[Number(b.dataset.desecratePick)];
+        state.desecrateChoices = null;
+        closeModal();
+        performAction({ type: 'desecrate_pick', choice: E.clone(choice) }, { skipConfirm: true });
       };
     });
   }
@@ -1490,6 +1661,12 @@
     if (btn) btn.onclick = () => chooseTool({ type: 'recombine', donor: E.clone(donor) });
   }
   function renderBenchActions(body) {
+    // PoE2 没有工艺台（dat 里 CraftingBenchOptions 只有 PoE1 的 vf1/vf2），
+    // 多重工艺 / 锁侧 / meta 工艺也一并属于 PoE1 机制，这里直接拦掉。
+    if (!(D.bench || []).length) {
+      body.innerHTML = '<div class="action-none">PoE2 没有工艺台：做装靠通货、精华、符文、灵魂核心与预兆。</div>';
+      return;
+    }
     if (state.item.rarity !== 'rare') {
       body.innerHTML = '<div class="action-none">工艺台只能用于稀有物品。</div>';
       return;
@@ -1570,7 +1747,7 @@
     renderToolBanner();
     if (!opts.fromAuto && state.autoRunning) stopAuto('已手动接管');
     const before = E.clone(state.item);
-    const res = E.applyAction(before, action, { prices: priceOverrides() });
+    const res = E.applyAction(before, action, { prices: priceOverrides(), targets: currentTargets().map((t) => t.modId) });
     if (res.error) { toast(res.error, 'error'); return false; }
     state.history.push({
       item: before, log: state.log.slice(), spent: state.spent, attempts: state.attempts,
@@ -1583,12 +1760,19 @@
     state.attempts++;
     state.routeStats = null;
     const entry = addLog(action, res, before, state.item, opts.silent);
-    if (!opts.fromAuto && !opts.skipConfirm) {
+    // 深渊三选一：揭露阶段先不进入「等待确认」，等玩家选完再确认最终结果
+    const hasChoices = !!(res.choices && res.choices.length);
+    if (!opts.fromAuto && !opts.skipConfirm && !hasChoices) {
       state.pendingResult = {
         action: E.clone(action), title: A.actionTitle(action), message: res.message,
         before: E.clone(before), after: E.clone(state.item), cost: res.cost,
         logId: entry && entry.id, timestamp: Date.now(),
       };
+    }
+    // 深渊词缀三选一：先记录这一步，再让玩家挑一条
+    if (res.choices && res.choices.length) {
+      state.desecrateChoices = res.choices;
+      openDesecratePicker(res.choices);
     }
     save();
     renderHeader();
@@ -1790,7 +1974,7 @@
       $('#progress-meta').textContent = '等待目标';
       $('#target-checks').innerHTML = '';
       elRecs.innerHTML = '<div class="action-none">添加至少 1 条目标词缀后，这里会给出下一步建议。</div>';
-      $('#route-plan').innerHTML = '<div class="plan-diagnosis">选择一个快速模板，或手动添加目标。</div>';
+      $('#route-plan').innerHTML = '<div class="plan-diagnosis">先添加 1 条目标词缀，顾问才会给出路线。</div>';
       $('#plan-title').textContent = '等待目标';
       $('#route-stats').classList.remove('show');
       $('#route-stats').innerHTML = '';
@@ -2024,7 +2208,7 @@
         '<div class="modal-head"><div><h3>' + (opts.fromResult ? '录入这一步的实际结果' : '录入现有装备') + '</h3><p>' + (opts.fromResult ? '以模拟结果为起点，把游戏里实际出现的词缀改成一致。' : '把游戏里已经做出来的装备填进来，顾问会从当前状态继续。') + '</p></div>' +
         '<button class="modal-close" data-close type="button">×</button></div>' +
         '<div class="modal-body">' +
-        '<div class="modal-note">底子：<b>' + esc(base.name) + '</b> · 物品等级 ' + draft.ilvl + ' · 影响 ' + (draft.influences.length ? draft.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).join(' / ') : '无') + '</div>' +
+        '<div class="modal-note">底子：<b>' + esc(baseLabel(base)) + '</b> · 物品等级 ' + draft.ilvl + ' · 影响 ' + (draft.influences.length ? draft.influences.map((id) => (D.influences.find((x) => x.id === id) || {}).name).join(' / ') : '无') + '</div>' +
         '<div class="form-grid" style="margin-bottom:13px">' +
         '<div class="form-row"><label>稀有度</label><select id="manual-rarity">' +
         ['normal', 'magic', 'rare'].map((r) => '<option value="' + r + '" ' + (draft.rarity === r ? 'selected' : '') + '>' + E.rarityName(r) + '</option>').join('') +
@@ -2343,6 +2527,38 @@
       '<span>' + esc(labelFn(item)) + '</span><b>' + esc(String(item.cost)) + (unit || 'c') + '</b>' +
       '</div>').join('');
   }
+  /* 数据来源 / 许可 / 近似项说明。让「哪些是官方数据、哪些是估计」在界面上可见，
+   * 不藏在文档里；PoE2 的词缀与底子来自社区 wiki，权重仍是估计值。 */
+  function gameDataSection() {
+    const modMeta = D.modDataMeta;
+    const baseMeta = D.baseDataMeta;
+    if (!modMeta && !baseMeta) return '';
+    const fmtDate = (iso) => {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleDateString('zh-CN'); } catch (e) { return '—'; }
+    };
+    const approxWeights = D.mods.filter((m) => m.weightSource === 'approx').length;
+    const rows = [];
+    if (modMeta) {
+      rows.push('<div class="read-row"><span>词缀数据</span><b>' + D.mods.length + ' 组 / '
+        + D.mods.reduce((n, m) => n + m.tiers.length, 0) + ' 档</b></div>');
+      rows.push('<div class="read-row"><span>词缀抓取时间</span><b>' + esc(fmtDate(modMeta.fetchedAt)) + '</b></div>');
+    }
+    if (baseMeta) {
+      rows.push('<div class="read-row"><span>底子数据</span><b>' + D.bases.length + ' 个</b></div>');
+      rows.push('<div class="read-row"><span>底子抓取时间</span><b>' + esc(fmtDate(baseMeta.fetchedAt)) + '</b></div>');
+    }
+    rows.push('<div class="read-row"><span>来源 / 许可</span><b>' + esc((modMeta && modMeta.source) || (baseMeta && baseMeta.source) || '—')
+      + ' · CC BY-NC-SA 3.0</b></div>');
+    if (approxWeights) {
+      rows.push('<div class="read-row"><span>权重可信度</span><b>' + approxWeights + ' 组为估计值</b></div>');
+    }
+    return '<details class="config-section" open><summary>数据来源 <small>只读</small></summary><div class="config-section-body">'
+      + '<div class="read-grid">' + rows.join('') + '</div>'
+      + '<div class="config-note">词缀与底子来自社区 wiki（CC BY-NC-SA 3.0，非商业、需署名）；'
+      + '生成权重尚未取得官方数值，带「估计值」标记，概率只用于比较策略，不等于官方掉率。</div>'
+      + '</div></details>';
+  }
   function openSettings() {
     const prices = priceOverrides();
     const canAuto = backendConfigured() && location.protocol !== 'file:';
@@ -2365,6 +2581,7 @@
         readRows(D.bench, (b) => b.name) + '</div></div></details>'
       : '';
     const staticMode = staticConfigMode();
+    const dataSourceSection = gameDataSection();
     const html =
       '<div class="modal-head"><div><h3>数据状态</h3><p>价格由' + (staticMode ? '同源静态配置' : '后端统一拉取') + '，页面只读展示；不提供手动改价。</p></div>' +
       '<button class="modal-close" data-close type="button">×</button></div>' +
@@ -2376,6 +2593,8 @@
       '<div class="config-note">' + (staticMode
         ? '价格来自同源静态配置，前端只能请求刷新，不能填写。前端每 ' + Math.round(runtimeCooldown() / 60) + ' 分钟最多请求一次。'
         : '价格由后端从上游拉取，前端只能请求刷新，不能填写。每轮拉取后进入 ' + Math.round(runtimeCooldown() / 60) + ' 分钟冷却；冷却由后端强制，前端另有倒计时。') + '</div>' +
+
+      dataSourceSection +
 
       '<details class="config-section" open><summary>当前价格 <small>只读 · 单位混沌石</small></summary><div class="config-section-body">' +
       '<div class="read-grid">' + fields.map(([key, label]) =>
@@ -2469,7 +2688,7 @@
       state.influences = parsed.item.influences || [];
       state.item = parsed.item;
       state.item.meta = state.item.meta || { multimod: false };
-      E.syncMetaFlags(state.item);
+      if (typeof E.syncMetaFlags === 'function') E.syncMetaFlags(state.item);
       state.item.influences = state.influences.slice();
       state.item.affixes = state.item.affixes || [];
       state.item.ilvl = state.item.ilvl || state.ilvl;
@@ -2562,13 +2781,6 @@
     });
     $$('[data-collapse]').forEach((btn) => {
       btn.onclick = () => toggleCollapse(btn.dataset.collapse);
-    });
-    $$('[data-preset-scroll]').forEach((btn) => {
-      btn.onclick = () => {
-        const list = $('#preset-list');
-        if (!list) return;
-        list.scrollBy({ left: Number(btn.dataset.presetScroll) * Math.max(180, list.clientWidth * 0.72), behavior: 'smooth' });
-      };
     });
     applyCollapsedState();
     const guideBtn = $('#journey-guide');
@@ -2670,7 +2882,6 @@
     renderTargetSummary();
     renderTargetSideTabs();
     renderTargetPool();
-    renderPresets();
     renderInfluences();
     renderItem();
     renderActionTabs();
@@ -2715,6 +2926,10 @@
       state.history = [];
     }
     renderAll();
+    if (REQUESTED_GAME === 'poe1') {
+      try { history.replaceState(null, '', location.pathname + '?game=poe2'); } catch (e) { /* file:// 下忽略 */ }
+      toast('流放 1 入口已关闭，当前只提供流放 2。', '', 4200);
+    }
     setupAutoSync();
     if (state.settings.autoSync) {
       setTimeout(() => refreshConfig({ onlyIfNewer: true, silent: true }), 800);

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>流放做装台 · PoE1 / PoE2 装备制作助手</title>
-  <meta name="description" content="流放之路 1 / 2 装备制作辅助工具：选择底子与目标词缀，模拟每一步做装结果并动态推荐后续策略。">
+  <title>流放做装台 · 流放之路 2 装备制作助手</title>
+  <meta name="description" content="流放之路 2 装备制作辅助工具：选择底子与目标词缀，模拟每一步做装结果并动态推荐后续策略。（流放 1 入口已关闭）">
   <meta name="page-type" content="software">
   <meta name="site-kind" content="gaming">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
@@ -21,12 +21,11 @@
         <div class="sigil" aria-hidden="true"><span>流</span></div>
         <div class="brand-text">
           <h1>流放做装台</h1>
-          <p id="brand-sub">PATH OF EXILE 1 · 装备制作助手</p>
+          <p id="brand-sub">PATH OF EXILE 2 · 装备制作助手</p>
         </div>
       </div>
-      <nav class="game-switch" id="game-switch" aria-label="选择游戏">
-        <a href="?game=poe1" data-game="poe1">流放 1</a>
-        <a href="?game=poe2" data-game="poe2">流放 2</a>
+      <nav class="game-switch" id="game-switch" aria-label="当前游戏">
+        <span class="game-label active" data-game="poe2" title="流放 1 入口已关闭，当前只提供流放 2">流放 2</span>
       </nav>
       <div class="topbar-meta">
         <span class="live-dot"></span>
@@ -77,17 +76,6 @@
       </nav>
 
       <section class="stage" id="stage">
-          <section class="block collapsible quick-template-panel" id="section-presets">
-            <div class="block-head">
-              <h2><span class="quick-mark">快捷</span>快速模板 <span class="help-dot" tabindex="0" title="不知道怎么选目标时，先点一个模板。它会帮你把底子和目标都设好。" aria-label="快速模板说明">?</span></h2>
-              <button class="collapse-toggle" type="button" data-collapse="presets" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
-            </div>
-            <div class="section-body">
-              <p class="block-desc">第一次用？直接点一个模板，底子和目标会自动填好。</p>
-              <div class="preset-list preset-strip" id="preset-list"></div>
-              <div class="preset-foot"><span>左右滑动查看更多</span><div><button class="preset-arrow" type="button" data-preset-scroll="-1" aria-label="上一组模板">‹</button><button class="preset-arrow" type="button" data-preset-scroll="1" aria-label="下一组模板">›</button></div></div>
-            </div>
-          </section>
         <div class="item-strip">
           <section class="item-panel">
             <div class="item-toolbar">
@@ -138,6 +126,7 @@
             <div class="section-body">
               <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
               <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
+              <div class="tabs weapon-tabs" id="weapon-tabs" role="tablist" aria-label="武器类型" hidden></div>
               <div class="field search-field">
                 <span class="field-icon" aria-hidden="true">⌕</span>
                 <input id="base-search" type="search" placeholder="搜索底子名称 / 英文名" autocomplete="off">
@@ -264,13 +253,14 @@
   <div class="modal-root" id="modal-root"></div>
 
   <script src="js/runtime-config.js"></script>
-  <script src="js/data.js"></script>
+  <script src="js/data-poe2.dat-omens.js"></script>
+  <script src="js/data-poe2.dat-bases.js"></script>
+  <script src="js/data-poe2.dat-mods.js"></script>
+  <script src="js/data-poe2.dat-essences.js"></script>
+  <script src="js/data-poe2.dat-soulcores.js"></script>
   <script src="js/data-poe2.js"></script>
-  <script src="js/config.js"></script>
   <script src="js/config-poe2.js"></script>
-  <script src="js/engine.js"></script>
   <script src="js/engine-poe2.js"></script>
-  <script src="js/advisor.js"></script>
   <script src="js/advisor-poe2.js"></script>
   <script src="js/games.js"></script>
   <script src="js/app.js"></script>

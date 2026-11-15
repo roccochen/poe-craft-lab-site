@@ -36,7 +36,10 @@
     return s;
   }
   function formatText(text, values) {
-    return String(text).replace(/\{(\d+)\}/g, (m, i) => {
+    // 有繁中模板时用繁中（术语按官方繁中用词，占位符顺序与英文一致）
+    const map = D.zhModMap || {};
+    const tpl = map[text] || text;
+    return String(tpl).replace(/\{(\d+)\}/g, (m, i) => {
       const v = values[Number(i)];
       return v === undefined ? m : fmtNum(v);
     });
@@ -69,6 +72,17 @@
   D.fossils.forEach((f) => { fossilById[f.id] = f; });
   const targetById = Object.assign({}, modById, benchById);
 
+  /* 词缀组：工艺词缀有独立组名，目标匹配与新词缀落位都要用同一张表。 */
+  const BENCH_GROUP = {
+    bench_life: 'life', bench_life_high: 'life', bench_es: 'es_flat', bench_ar: 'ar_flat',
+    bench_ev: 'ev_flat', bench_mana: 'mana_flat', bench_fire_res: 'res_fire',
+    bench_cold_res: 'res_cold', bench_light_res: 'res_light', bench_chaos_res: 'res_chaos',
+    bench_all_res: 'all_res', bench_attack_speed: 'attack_speed', bench_cast_speed: 'cast_speed',
+    bench_crit_multi: 'crit_multi', bench_move_speed: 'move_speed', bench_accuracy: 'accuracy',
+  };
+  const DEF_GROUP = BENCH_GROUP;
+  function groupOf(def) { return (def && (DEF_GROUP[def.id] || def.group || def.id)) || null; }
+
   /* ------------------------------------------------------------------ *
    * 底子 / 词缀资格
    * ------------------------------------------------------------------ */
@@ -76,6 +90,7 @@
   function createItem(baseId, opts) {
     opts = opts || {};
     const base = getBase(baseId) || D.bases[0];
+    const sockets = opts.sockets != null ? Number(opts.sockets) : defaultSockets(base);
     return {
       baseId: base.id,
       ilvl: Math.max(1, Math.min(100, Number(opts.ilvl) || base.ilvl)),
@@ -83,14 +98,128 @@
       rarity: opts.rarity || 'normal',
       affixes: opts.affixes || [],
       quality: opts.quality || 0,
+      corrupted: !!opts.corrupted,
+      sockets: Math.max(0, Math.min(2, sockets)),
+      runes: (opts.runes || []).slice(0, 2),
       meta: { multimod: false },
     };
   }
+  /* 插槽部位：PoE2 只有武器与护甲类（含盾 / 法器）能插符文，首饰和箭袋没有插槽。 */
+  const RUNE_SLOTS = ['weapon', 'helmet', 'body', 'gloves', 'boots', 'shield', 'focus'];
+  function defaultSockets(base) {
+    if (!base) return 0;
+    return RUNE_SLOTS.indexOf(base.slot) !== -1 ? 1 : 0;
+  }
+  function canSocket(base) { return !!base && RUNE_SLOTS.indexOf(base.slot) !== -1; }
   function baseDefenceTags(base) {
     return Object.keys(base.defence || {});
   }
+  /* 底子的属性需求（str/dex/int）由防御类型推导：
+   * armour→str，evasion→dex，energy shield→int，复合底子同时具备多种。 */
+  const DEF_ATTR = { ar: 'str', ev: 'dex', es: 'int' };
+  function baseAttrs(base) {
+    const out = [];
+    Object.keys(base.defence || {}).forEach((k) => { if (DEF_ATTR[k]) out.push(DEF_ATTR[k]); });
+    return out;
+  }
+  /* 武器页面分桶 → 底子的武器类别。wiki 按「单/双手、法术倾向」分页，
+   * 底子上的 weapon.class 是武器类别，这里做一次映射。 */
+  const WEAPON_BUCKETS = {
+    quarterstaff: ['quarterstaff'],
+    crossbow: ['crossbow'],
+    bow: ['bow'],
+    wand: ['wand', 'wand_fire', 'wand_lightning', 'wand_chaos', 'wand_physical'],
+    sceptre: ['sceptre'],
+    staff: ['staff', 'staff_fire', 'staff_cold', 'staff_lightning'],
+    mace: ['mace', 'two_hand_mace'],
+    spear: ['spear'],
+    talisman: ['talisman'],
+    flail: ['mace'],
+  };
+  function weaponBucketsFor(base) {
+    const cls = (base.weapon && base.weapon.class) || [];
+    const out = [];
+    cls.forEach((c) => {
+      const b = WEAPON_BUCKETS[c];
+      if (b) out.push(...b);
+      else out.push(c);
+    });
+    return out;
+  }
+
+  /* 底子 → 官方 spawn weight tag。
+   * wiki 的权重表用的就是这些 tag：槽位（helmet / body_armour / …）、
+   * 护甲细分（str_armour / str_dex_armour / …）、武器类别（wand / mace / …）。 */
+  const ARMOUR_TAG = {
+    ar: 'str_armour', ev: 'dex_armour', es: 'int_armour',
+    'ar,ev': 'str_dex_armour', 'ar,es': 'str_int_armour', 'ev,es': 'dex_int_armour',
+    'ar,ev,es': 'str_dex_int_armour',
+  };
+  function baseTags(base) {
+    if (!base) return [];
+    // 官方 dat 数据自带真实 tag 集合（str_armour / ezomyte_basetype …），
+    // 但它不含槽位 tag（helmet / ring …），因此与下面的派生 tag 合并
+    const tags = new Set(Array.isArray(base.tags) ? base.tags : []);
+    const slotTag = base.slot === 'body' ? 'body_armour' : base.slot;
+    tags.add(slotTag);
+    // 更宽的分组 tag：护甲槽位算 armour，首饰算 jewellery（权重表里两种写法都有）
+    if (['helmet', 'body', 'gloves', 'boots', 'shield', 'focus'].indexOf(base.slot) !== -1) tags.add('armour');
+    if (['ring', 'amulet', 'belt'].indexOf(base.slot) !== -1) tags.add('jewellery');
+    const defKeys = Object.keys(base.defence || {}).filter((k) => base.defence[k] > 0).sort();
+    if (defKeys.length) {
+      const k = defKeys.join(',');
+      if (ARMOUR_TAG[k]) tags.add(ARMOUR_TAG[k]);
+      // 权重表里也有「槽位 + 属性」的合写 tag，例如 int_helmet / str_dex_armour
+      const short = { ar: 'str', ev: 'dex', es: 'int' };
+      const attrPart = defKeys.map((d) => short[d]).filter(Boolean).join('_');
+      if (attrPart) tags.add(attrPart + '_' + slotTag);
+    }
+    // 珠宝的词缀按属性分池，tag 形如 intjewel / dex_jewel / alljewel
+    if (base.slot === 'jewel') {
+      ['strjewel', 'dexjewel', 'intjewel', 'alljewel', 'jewel_mod'].forEach((t) => tags.add(t));
+    }
+    if (base.slot === 'weapon') {
+      const cls = (base.weapon && base.weapon.class) || [];
+      cls.forEach((c) => {
+        (WEAPON_BUCKETS[c] || [c]).forEach((b) => tags.add(b));
+      });
+    }
+    return [...tags];
+  }
+  /* 该词缀在这个底子上的官方权重：取命中 tag 的最大值；没有官方数据返回 null */
+  function weightFor(mod, base) {
+    if (!mod.spawnWeights) return null;
+    const tags = baseTags(base);
+    let best = null;
+    for (const t of tags) {
+      const w = mod.spawnWeights[t];
+      if (typeof w === 'number' && (best === null || w > best)) best = w;
+    }
+    return best;
+  }
+
   function modEligibleOnBase(mod, base, item) {
+    // 官方 spawn weights 是最准确的判据：命中 tag 且权重 > 0 才算能掉。
+    // 有官方权重时优先于词缀自带的 slots 元数据——两者偶有冲突（wiki 页面把
+    // 同一组词缀的不同部位变体归到同一页），权重才是逐物品类别的事实。
+    if (mod.spawnWeights) return !!(weightFor(mod, base) > 0);
     if (!mod.slots || mod.slots.indexOf(base.slot) === -1) return false;
+    // 属性版本：同一词缀可能出现在多个属性版本页面上（力量/敏捷/智慧/复合），
+    // 只要底子的属性满足其中任意一组就算可用。
+    // 武器不走这条：武器底子没有防御类型，无从推导属性，改由武器分桶区分。
+    if (base.slot !== 'weapon') {
+      const attrSets = mod.attrSets && mod.attrSets.length ? mod.attrSets : (mod.attrs && mod.attrs.length ? [mod.attrs] : []);
+      if (attrSets.length) {
+        const attrs = baseAttrs(base);
+        const ok = attrSets.some((set) => set.every((a) => attrs.indexOf(a) !== -1));
+        if (!ok) return false;
+      }
+    }
+    // 武器分桶：限定武器页面的词缀只给对应武器类别
+    if (base.slot === 'weapon' && mod.weapons && mod.weapons.length) {
+      const buckets = weaponBucketsFor(base);
+      if (!mod.weapons.some((w) => buckets.indexOf(w) !== -1)) return false;
+    }
     if (mod.def) {
       const defs = baseDefenceTags(base);
       if (!mod.def.some((d) => defs.indexOf(d) !== -1)) return false;
@@ -161,12 +290,16 @@
     const out = [];
     for (const mod of D.mods) {
       if (mod.affix !== side) continue;
+      // 只有 standard 词缀进普通随机池；desecrated / corruption 由各自系统单独投放
+      if (mod.kind && mod.kind !== 'standard') continue;
       if (groups[mod.group]) continue;
       if (!modEligibleOnBase(mod, base, item)) continue;
       if (opts.onlyTag && mod.tags.indexOf(opts.onlyTag) === -1) continue;
       const tiers = eligibleTiers(mod, item.ilvl);
       if (!tiers.length) continue;
-      let w = mod.weight;
+      // 优先官方权重；没有官方数据才退回估算值
+      const official = weightFor(mod, base);
+      let w = official != null ? official : mod.weight;
       if (opts.fossils && opts.fossils.length) {
         const f = fossilFactor(mod, opts.fossils);
         if (f <= 0) continue;
@@ -179,7 +312,22 @@
     return out;
   }
 
+  /* 防御性检查：文本占位符数量必须与数值数量匹配，否则会显示 {1} 这类残余占位符 */
+  /* 官方繁中模板优先，没��再退回英文模板 */
+  function pickTemplate(tierLike) {
+    return (tierLike && (tierLike.textZh || tierLike.text)) || '';
+  }
+  function placeholderMismatch(text, values) {
+    const maxPh = [...String(text || '').matchAll(/\{(\d)\}/g)].reduce((n, m) => Math.max(n, Number(m[1])), -1);
+    return maxPh >= (values || []).length;
+  }
   function makeAffix(mod, tier, rng, opts) {
+    // 坏档位（CSD 期望的 stat 比 mod 提供的多）→ 换成同 mod 的可用档，避免坏文本
+    if (tier && placeholderMismatch(tier.text, tier.v)) {
+      const good = (mod.tiers || []).find((t) => !placeholderMismatch(t.text, t.v));
+      if (!good) return null;
+      tier = good;
+    }
     opts = opts || {};
     const rank = opts.tierRank || tierRank(mod, tier);
     const values = tier.v.map((range) => {
@@ -195,7 +343,7 @@
       tierRank: rank,
       tierIlvl: tier.ilvl,
       values,
-      text: formatText(opts.text || mod.text, values),
+      text: formatText(opts.text || pickTemplate(tier) || mod.text, values),
       tags: (opts.tags || mod.tags || []).slice(),
       crafted: !!opts.crafted,
       fractured: !!opts.fractured,
@@ -239,12 +387,36 @@
     return aff;
   }
 
+  /* 选择新词缀落在哪一侧。
+   * 物品上记录 targets（模组 id 列表）时，优先补「目标还没命中」的那一侧：
+   * PoE2 里玩家真正关心的是目标词缀，而不是两侧数量绝对平均。
+   * 没有目标信息时退回「数量少的一侧」，两侧相同则随机。 */
+  function sideNeeded(item, side) {
+    const targets = item && item.targets;
+    if (!Array.isArray(targets) || !targets.length) return null;
+    let open = 0;
+    let closed = 0;
+    for (const modId of targets) {
+      const def = modById[modId] || benchById[modId];
+      if (!def || def.affix !== side) continue;
+      const group = groupOf(def);
+      const hit = item.affixes.some((a) => a.group === group);
+      if (hit) closed++; else open++;
+    }
+    if (!open && !closed) return null;
+    return open > 0 ? 1 - closed / (open + closed) : 0;
+  }
   function chooseSide(item, rng) {
     const opts = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
     if (!opts.length) return null;
     if (opts.length === 1) return opts[0];
     const p = sides(item, 'prefix').length;
     const s = sides(item, 'suffix').length;
+    const pNeed = sideNeeded(item, 'prefix');
+    const sNeed = sideNeeded(item, 'suffix');
+    if (pNeed != null && sNeed != null && pNeed !== sNeed) return pNeed > sNeed ? 'prefix' : 'suffix';
+    if (pNeed != null && sNeed == null) return pNeed > 0 ? 'prefix' : 'suffix';
+    if (sNeed != null && pNeed == null) return sNeed > 0 ? 'suffix' : 'prefix';
     if (p < s) return 'prefix';
     if (s < p) return 'suffix';
     return rand(rng) < 0.5 ? 'prefix' : 'suffix';
@@ -284,6 +456,87 @@
       return false;
     });
     item.affixes = keep;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 符文 / 灵魂核心
+   * ------------------------------------------------------------------ */
+  const runeById = {};
+  (D.runes || []).forEach((r) => { runeById[r.id] = r; });
+  (D.soulCores || []).forEach((r) => { runeById[r.id] = r; });
+
+  function runeDef(id) { return runeById[id] || null; }
+
+  /* 已激活的预兆：作用于下一次对应通货后消耗 */
+  function armedOmens(item) { return (item && item.meta && item.meta.omens) || []; }
+  function takeArmedOmen(item, currency) {
+    const list = armedOmens(item);
+    const idx = list.findIndex((o) => o.appliesTo === currency);
+    if (idx === -1) return null;
+    const [om] = list.splice(idx, 1);
+    return om;
+  }
+  function runeEligibleOnBase(rune, base) {
+    if (!rune || !base) return false;
+    if (!canSocket(base)) return false;
+    const slots = rune.slots || ['armour'];
+    if (slots.indexOf('weapon') !== -1 && base.slot === 'weapon') return true;
+    if (slots.indexOf('armour') !== -1 && base.slot !== 'weapon') return true;
+    return false;
+  }
+  function runeAvailability(item, runeId) {
+    const rune = runeDef(runeId);
+    if (!rune) return '未知符文';
+    if (item.corrupted) return '物品已腐化，不能再插符文';
+    const base = getBase(item.baseId);
+    if (!canSocket(base)) return '这个部位没有插槽';
+    if (!runeEligibleOnBase(rune, base)) return '这个符文不能插在该部位';
+    if (item.affixes.some((a) => a.runeId === runeId)) return '已经插了同名符文';
+    if ((item.runes || []).length >= (item.sockets || 0)) return '插槽已满，先清空一个插槽';
+    return null;
+  }
+  /* 符文/灵魂核心按插槽类别取效果：1=武器、3=法杖类、4=护甲（由 Desert Rune 数据验证） */
+  const RUNE_CAT = { martial: 1, caster: 3, armour: 4 };
+  function runeBaseGroup(base) {
+    if (!base) return null;
+    if (base.slot === 'weapon') {
+      const cls = (base.weapon && base.weapon.class) || [];
+      if (cls.some((c) => c === 'wand' || c === 'staff' || c === 'sceptre')) return 'caster';
+      return 'martial';
+    }
+    return 'armour';
+  }
+  function runeEffectFor(rune, base) {
+    if (!rune || !Array.isArray(rune.effects) || !base) return null;
+    const cat = RUNE_CAT[runeBaseGroup(base)];
+    return rune.effects.find((x) => x.cat === cat) || null;
+  }
+  /* 属性推导要用英文模板（applyStatText 依赖英文关键词） */
+  function runeStatText(rune, base) {
+    const eff = runeEffectFor(rune, base);
+    if (eff) {
+      const vals = (eff.v || []).map((x) => (Array.isArray(x) ? x[0] : x));
+      return formatText(eff.text, vals);
+    }
+    if (!rune) return '';
+    const flat = (arr) => (arr || []).map((x) => (Array.isArray(x) ? x[0] : x));
+    return formatText(rune.text, flat(rune.v));
+  }
+  function runeText(rune, base) {
+    const eff = runeEffectFor(rune, base);
+    if (eff) {
+      const vals = (eff.v || []).map((r) => (Array.isArray(r) ? r[0] : r));
+      return formatText(eff.textZh || eff.text, vals);
+    }
+    if (!rune) return '';
+    const flat = (arr) => (arr || []).map((x) => (Array.isArray(x) ? x[0] : x));
+    if (Array.isArray(rune.v2)) return formatText(rune.text, flat(rune.v).concat([Array.isArray(rune.v2[0]) ? rune.v2[0][0] : rune.v2[0]]));
+    return formatText(rune.text, flat(rune.v));
+  }
+  function clearSocketsAvailability(item) {
+    if (item.corrupted) return '物品已腐化，不能取出符文';
+    if (!(item.runes || []).length) return '没有已插入的符文';
+    return null;
   }
 
   /* ------------------------------------------------------------------ *
@@ -384,15 +637,25 @@
       case 'annulment': return prices.annulment;
       case 'divine': return prices.divine;
       case 'vaal': return prices.vaal;
+      case 'whetstone': return prices.whetstone;
+      case 'scrap': return prices.scrap;
+      case 'rune': {
+        const r = runeDef(action.runeId);
+        return r ? r.cost : 0;
+      }
+      case 'rune_clear': return 0;
+      case 'desecrate': return prices.desecrate;
+      case 'desecrate_pick': return 0;
+      case 'vaal': return prices.vaal;
       case 'essence': {
         const e = essenceById[action.essenceId];
         return e ? e.cost : 0;
       }
+      case 'omen_clear': return 0;
       case 'omen': {
         const omen = (D.omens || []).find((x) => x.id === action.omenId);
-        if (!omen) return 0;
-        if (action.omenId === 'omen_sinistral_exalt' || action.omenId === 'omen_dextral_exalt'
-          || action.omenId === 'omen_greater_exalt') return omen.cost + prices.exalted;
+        if (!omen || omen.cost == null) return 0;
+        // 语义已改为「激活预兆，作用于下一次通货」：这里只收预兆价格
         return omen.cost;
       }
       default: return 0;
@@ -412,14 +675,6 @@
     if (existingGroups(item)[craft.group || craft.id]) return false;
     return true;
   }
-
-  const BENCH_GROUP = {
-    bench_life: 'life', bench_life_high: 'life', bench_es: 'es_flat', bench_ar: 'ar_flat',
-    bench_ev: 'ev_flat', bench_mana: 'mana_flat', bench_fire_res: 'res_fire',
-    bench_cold_res: 'res_cold', bench_light_res: 'res_light', bench_chaos_res: 'res_chaos',
-    bench_all_res: 'all_res', bench_attack_speed: 'attack_speed', bench_cast_speed: 'cast_speed',
-    bench_crit_multi: 'crit_multi', bench_move_speed: 'move_speed', bench_accuracy: 'accuracy',
-  };
 
   function rollRareCount(rng) {
     const r = rand(rng);
@@ -446,10 +701,21 @@
     const rng = ctx.rng || defaultRng;
     const prices = mergePrices(ctx.prices);
     const next = clone(item);
+    // 目标只用于决定新词缀落在哪一侧，不进物品正文。
+    next.targets = (ctx.targets || item.targets || []).slice();
     next.meta = next.meta || { multimod: false };
     const cost = actionCost(action, prices);
     const fail = (msg) => ({ error: msg, item: next, cost: 0, message: '' });
     let message = '';
+
+    // 腐化后普通通货与精华都不能再用；符文与查看类操作另行判断。
+    const CORRUPT_BLOCKED = [
+      'transmute', 'alteration', 'augmentation', 'regal', 'alchemy', 'chaos',
+      'exalted', 'annulment', 'divine', 'essence', 'omen', 'whetstone', 'scrap', 'desecrate',
+    ];
+    if (next.corrupted && CORRUPT_BLOCKED.indexOf(action.type) !== -1) {
+      return fail('物品已腐化，不能使用普通通货 / 精华。');
+    }
 
     switch (action.type) {
       case 'transmute': {
@@ -471,7 +737,7 @@
         if (next.rarity !== 'magic') return fail('增幅石只能用于魔法物品。');
         if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('魔法物品最多 2 条词缀。');
         const side = chooseSide(next, rng);
-        addRandomAffix(next, side, rng, {});
+        if (!addRandomAffix(next, side, rng, {})) return fail('当前底子没有可用的词缀可添加。');
         message = '使用增幅石：魔法物品补到 2 条词缀。';
         break;
       }
@@ -479,43 +745,105 @@
         if (next.rarity !== 'magic') return fail('富豪石只能用于魔法物品。');
         next.rarity = 'rare';
         const side = chooseSide(next, rng);
-        addRandomAffix(next, side, rng, {});
+        if (!addRandomAffix(next, side, rng, {})) return fail('当前底子没有可用的词缀可添加。');
         message = '使用富豪石：魔法物品升级为稀有物品。';
         break;
       }
       case 'alchemy': {
         if (next.rarity !== 'normal' && next.rarity !== 'magic') return fail('点金石只能用于普通或魔法物品。');
+        const alcOmen = takeArmedOmen(next, 'alchemy');
         next.rarity = 'rare';
         clearForReroll(next, []);
         fillTo(next, 4, rng, {});
-        message = '使用点金石：普通 / 魔法物品变为 4 词缀稀有物品。';
+        if (alcOmen && (alcOmen.effect === 'alchemy_max_prefix' || alcOmen.effect === 'alchemy_max_suffix')) {
+          const side = alcOmen.effect === 'alchemy_max_prefix' ? 'prefix' : 'suffix';
+          while (canAdd(next, side)) {
+            if (!addRandomAffix(next, side, rng, {})) break;
+          }
+        }
+        message = '使用点金石' + (alcOmen ? '（预兆：' + alcOmen.name + '）' : '') + '：普通 / 魔法物品变为稀有物品。';
         break;
       }
       case 'chaos': {
         if (next.rarity !== 'rare') return fail('混沌石只能用于稀有物品。');
         const removable = next.affixes.filter((a) => !a.fractured);
         if (!removable.length) return fail('没有可移除的词缀。');
-        const victim = removable[randInt(rng, 0, removable.length - 1)];
+        const chaosOmen = takeArmedOmen(next, 'chaos');
+        let pool = removable;
+        if (chaosOmen && chaosOmen.effect === 'remove_lowest') {
+          pool = removable.slice().sort((a, b) => (a.tierIlvl || 1) - (b.tierIlvl || 1)).slice(0, 1);
+        } else if (chaosOmen && chaosOmen.effect === 'remove_prefix_only') {
+          pool = removable.filter((a) => a.affix === 'prefix');
+        } else if (chaosOmen && chaosOmen.effect === 'remove_suffix_only') {
+          pool = removable.filter((a) => a.affix === 'suffix');
+        }
+        if (!pool.length) return fail('预兆要求的词缀不存在。');
+        const victim = pool[randInt(rng, 0, pool.length - 1)];
         next.affixes = next.affixes.filter((a) => a !== victim);
         if (canAdd(next, 'prefix') || canAdd(next, 'suffix')) addRandomAffix(next, chooseSide(next, rng), rng, {});
-        message = '使用混沌石：移除「' + victim.text.split('\n')[0] + '」并新增 1 条词缀。';
+        message = '使用混沌石' + (chaosOmen ? '（预兆：' + chaosOmen.name + '）' : '') + '：移除「' + victim.text.split('\n')[0] + '」并新增 1 条词缀。';
         break;
       }
       case 'exalted': {
         if (next.rarity !== 'rare') return fail('崇高石只能用于稀有物品。');
         if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('词缀已满，无法使用崇高石。');
-        const side = chooseSide(next, rng);
-        addRandomAffix(next, side, rng, {});
-        message = '使用崇高石：增加一条随机' + (side === 'prefix' ? '前缀' : '后缀') + '。';
+        const exOmen = takeArmedOmen(next, 'exalted');
+        let side = chooseSide(next, rng);
+        let addCount = 1;
+        if (exOmen && exOmen.effect === 'add_prefix') side = canAdd(next, 'prefix') ? 'prefix' : side;
+        if (exOmen && exOmen.effect === 'add_suffix') side = canAdd(next, 'suffix') ? 'suffix' : side;
+        if (exOmen && exOmen.effect === 'add_two') addCount = 2;
+        if (exOmen && exOmen.effect === 'add_same_group') {
+          const groups = [...new Set(next.affixes.map((a) => a.group).filter(Boolean))];
+          const group = groups.length ? groups[randInt(rng, 0, groups.length - 1)] : null;
+          const mods = group ? (D.mods || []).filter((mm) => mm.group === group && mm.kind === 'standard') : [];
+          if (mods.length) {
+            const mod = mods[randInt(rng, 0, mods.length - 1)];
+            const tiers = eligibleTiers(mod, next.ilvl);
+            if (tiers.length) {
+              const aff = makeAffix(mod, pickTier(rng, mod, tiers), rng);
+              if (aff) {
+                next.affixes.push(aff);
+                message = '使用崇高石（预兆：' + exOmen.name + '）：新增同组词缀「' + aff.text.split('\n')[0] + '」。';
+                break;
+              }
+            }
+          }
+          return fail('没有可添加的同组词缀。');
+        }
+        let added = 0;
+        for (let i = 0; i < addCount; i++) {
+          const s = addCount > 1 ? chooseSide(next, rng) : side;
+          if (!s || !addRandomAffix(next, s, rng, {})) break;
+          added++;
+        }
+        if (!added) return fail('当前底子没有可用的词缀可添加。');
+        message = '使用崇高石' + (exOmen ? '（预兆：' + exOmen.name + '）' : '') + '：增加 ' + added + ' 条词缀。';
         break;
       }
       case 'annulment': {
         if (next.rarity !== 'rare' && next.rarity !== 'magic') return fail('剥离石只能用于魔法或稀有物品。');
         const removable = next.affixes.filter((a) => !a.fractured);
         if (!removable.length) return fail('没有可剥离的词缀（破裂词缀无法剥离）。');
-        const victim = removable[randInt(rng, 0, removable.length - 1)];
-        next.affixes = next.affixes.filter((a) => a !== victim);
-        message = '使用剥离石：移除了「' + victim.text.split('\n')[0] + '」。';
+        const anOmen = takeArmedOmen(next, 'annulment');
+        let anPool = removable;
+        if (anOmen && anOmen.effect === 'remove_prefix_only') anPool = removable.filter((a) => a.affix === 'prefix');
+        if (anOmen && anOmen.effect === 'remove_suffix_only') anPool = removable.filter((a) => a.affix === 'suffix');
+        if (anOmen && anOmen.effect === 'remove_desecrated_only') anPool = removable.filter((a) => a.desecrated);
+        if (!anPool.length) return fail('预兆要求的词缀不存在。');
+        const anCount = anOmen && anOmen.effect === 'remove_two' ? 2 : 1;
+        const removed = [];
+        for (let i = 0; i < anCount; i++) {
+          const pool = anOmen && anOmen.effect === 'remove_prefix_only' ? next.affixes.filter((a) => !a.fractured && a.affix === 'prefix')
+            : anOmen && anOmen.effect === 'remove_suffix_only' ? next.affixes.filter((a) => !a.fractured && a.affix === 'suffix')
+            : anOmen && anOmen.effect === 'remove_desecrated_only' ? next.affixes.filter((a) => !a.fractured && a.desecrated)
+            : next.affixes.filter((a) => !a.fractured);
+          if (!pool.length) break;
+          const v = pool[randInt(rng, 0, pool.length - 1)];
+          next.affixes = next.affixes.filter((a) => a !== v);
+          removed.push(v);
+        }
+        message = '使用剥离石' + (anOmen ? '（预兆：' + anOmen.name + '）' : '') + '：移除了 ' + removed.length + ' 条词缀。';
         break;
       }
       case 'scour': {
@@ -528,28 +856,47 @@
       case 'essence': {
         const e = essenceById[action.essenceId];
         if (!e) return fail('未知精华。');
-        const slot = getBase(next.baseId).slot;
-        const cat = (slot === 'weapon' || slot === 'quiver') ? 'weapon'
-          : (slot === 'ring' || slot === 'amulet' || slot === 'belt') ? 'jewellery' : 'armour';
-        const desc = (e.bySlot && e.bySlot[slot]) || (e.byCat && e.byCat[cat]);
-        if (!desc) return fail('该精华不支持此物品。');
-        if (existingGroups(next)[desc.group]) return fail('已有同组词缀。');
-        if (e.perfect) {
-          if (next.rarity !== 'rare') return fail('Perfect 精华只能用于稀有物品。');
-          const removable = next.affixes.filter((a) => !a.fractured);
+        const blocked = essenceAvailability(next, e);
+        if (blocked) return fail(blocked);
+        const eff = essenceDescForItem(next, e);
+        if (!eff) return fail('该精华不支持此物品。');
+        const removable = next.affixes.filter((a) => !a.fractured);
+        let removedNote = '';
+        // 完美档：先移除 1 条随机词缀，再加保底
+        if (e.perfect || e.tier === 4) {
+          if (next.rarity !== 'rare') return fail('完美精华只能用于稀有物品。');
           if (!removable.length) return fail('没有可移除的词缀。');
-          const victim = removable[randInt(rng, 0, removable.length - 1)];
-          next.affixes = next.affixes.filter((a) => a !== victim);
-        } else if (next.rarity !== 'magic') {
-          return fail('强效 / 普通精华只能用于魔法物品。');
+          {
+            const victim = removable[randInt(rng, 0, removable.length - 1)];
+            next.affixes = next.affixes.filter((a) => a !== victim);
+            removedNote = '移除「' + victim.text.split('\n')[0] + '」并';
+          }
+        } else {
+          if (next.rarity !== 'magic') return fail('该档精华只能用于魔法物品。');
         }
         next.rarity = 'rare';
-        const aff = makeCustomAffix(desc, rng, {
-          essence: true, modId: 'essence_' + e.id, name: e.tierName + e.name + '精华',
-          tierRank: 1, tierIlvl: 1,
-        });
+        const values = (eff.v || []).map((r) => roundVal(randFloat(rng, r[0], r[1])));
+        const aff = {
+          uid: uidCounter++,
+          modId: 'essence_' + e.id,
+          group: 'essence_' + e.id,
+          affix: eff.affix,
+          name: e.tierName + e.name + '精华',
+          tierRank: 1,
+          tierIlvl: 1,
+          values,
+          text: formatText(eff.text, values),
+          tags: [],
+          crafted: false,
+          fractured: false,
+          essence: true,
+          influence: null,
+          benchId: null,
+        };
         next.affixes.push(aff);
-        message = '使用' + e.tierName + e.name + '精华：' + (e.perfect ? '移除 1 条并' : '魔法升稀有并') + '保底「' + aff.text.split('\n')[0] + '」。';
+        next.affixes.sort((a, b) => (a.affix === b.affix ? 0 : a.affix === 'prefix' ? -1 : 1));
+        message = '使用' + e.tierName + e.name + '精华：' + (removedNote || (e.perfect || e.tier === 4 ? '' : '魔法升稀有并'))
+          + '保底「' + aff.text.split('\n')[0] + '」。';
         break;
       }
       case 'fossil': {
@@ -617,6 +964,42 @@
         message = '锁定' + (action.side === 'prefix' ? '前缀' : '后缀') + '并使用崇高石：只增加另一侧词缀。';
         break;
       }
+      case 'desecrate': {
+        const blocked = desecrateAvailability(next);
+        if (blocked) return fail(blocked);
+        // 词缀满时先移除 1 条非破裂词缀腾位（游戏里也是先消耗掉一条）
+        if (!canAdd(next, 'prefix') && !canAdd(next, 'suffix')) {
+          const removable = next.affixes.filter((a) => !a.fractured);
+          if (!removable.length) return fail('词缀已满且没有可移除的词缀');
+          const victim = removable[randInt(rng, 0, removable.length - 1)];
+          next.affixes = next.affixes.filter((a) => a !== victim);
+          message = '保存之骨：先移除了「' + victim.text.split('\n')[0] + '」，';
+        } else {
+          message = '保存之骨：';
+        }
+        const desOmen = takeArmedOmen(next, 'desecrate');
+        let choices = desecrateChoices(next, rng, 3);
+        if (desOmen?.effect === 'desecrate_prefix_only') choices = choices.filter((m) => m.affix === 'prefix');
+        if (desOmen?.effect === 'desecrate_suffix_only') choices = choices.filter((m) => m.affix === 'suffix');
+        if (desOmen?.effect === 'desecrate_guaranteed_kurgal') choices = choices.filter((m) => /kurgal/i.test(m.id));
+        if (desOmen?.effect === 'desecrate_guaranteed_ulaman') choices = choices.filter((m) => /ulaman/i.test(m.id));
+        if (desOmen?.effect === 'desecrate_guaranteed_amanamu') choices = choices.filter((m) => /amanamu/i.test(m.id));
+        if (!choices.length) return fail('预兆要求的深渊词缀不存在');
+        message += '揭露 ' + choices.length + ' 条深渊词缀，选 1 条。';
+        // 选项交给界面处理，这里把 choices 一并返回
+        next.affixes.sort((a, b) => (a.affix === b.affix ? 0 : a.affix === 'prefix' ? -1 : 1));
+        return { item: next, cost, message, error: null, choices };
+      }
+      case 'desecrate_pick': {
+        const choice = action.choice;
+        if (!choice || !choice.modId) return fail('没有选择深渊词缀');
+        if (!canAdd(next, choice.affix)) return fail('该侧词缀已满');
+        const res = applyDesecratedPick(next, choice);
+        if (res.error) return fail(res.error);
+        next.affixes = res.item.affixes;
+        message = '加入深渊词缀：' + res.affix.text.split('\n')[0] + '。';
+        break;
+      }
       case 'divine': {
         if (next.rarity !== 'magic' && next.rarity !== 'rare') return fail('神圣石只能用于魔法或稀有物品。');
         if (!next.affixes.length) return fail('没有可重掷的词缀。');
@@ -624,38 +1007,98 @@
         message = '使用神圣石：重掷了所有词缀数值。';
         break;
       }
+      case 'whetstone':
+      case 'scrap': {
+        const base = getBase(next.baseId);
+        if (next.rarity === 'normal') return fail('普通物品没有词缀，先做成魔法 / 稀有再加品质。');
+        if ((next.quality || 0) >= 20) return fail('品质已达上限 20%。');
+        if (action.type === 'whetstone' && base.slot !== 'weapon') return fail('磨刀石只能用于武器。');
+        if (action.type === 'scrap' && base.slot === 'weapon') return fail('护甲片不能用于武器。');
+        if (action.type === 'scrap' && !canSocket(base)) return fail('护甲片只能用于护甲 / 盾 / 法器。');
+        const gain = randInt(rng, 1, 2);
+        next.quality = Math.min(20, (next.quality || 0) + gain);
+        message = (action.type === 'whetstone' ? '磨刀石' : '护甲片') + '：品质提升到 ' + next.quality + '%。';
+        break;
+      }
+      case 'rune': {
+        const blocked = runeAvailability(next, action.runeId);
+        if (blocked) return fail(blocked);
+        const rune = runeDef(action.runeId);
+        next.runes = (next.runes || []).concat([action.runeId]);
+        message = '插入' + rune.name + '：' + runeText(rune, getBase(next.baseId)) + '。';
+        break;
+      }
+      case 'rune_clear': {
+        const blocked = clearSocketsAvailability(next);
+        if (blocked) return fail(blocked);
+        next.runes = [];
+        message = '取出所有符文，插槽已清空。';
+        break;
+      }
+      case 'vaal': {
+        if (next.corrupted) return fail('物品已经腐化。');
+        next.corrupted = true;
+        // PoE2 瓦尔宝珠有四种结果：无变化 / 加腐化基底 / 重掷数值 / 移除词缀。
+        // 腐化基底词缀来自正式数据的 corruption 池（79 条），按部位与属性筛选。
+        const vaalOmen = takeArmedOmen(next, 'vaal');
+        let roll = randInt(rng, 0, 3);
+        if (vaalOmen && vaalOmen.effect === 'vaal_always_change' && roll === 0) roll = randInt(rng, 1, 3);
+        if (roll === 0) {
+          message = '瓦尔宝珠：物品腐化，但没有别的变化。';
+        } else if (roll === 1) {
+          const pool = corruptionCandidates(next);
+          if (pool.length) {
+            const pick = pool[randInt(rng, 0, pool.length - 1)];
+            const tier = pick.tiers[randInt(rng, 0, pick.tiers.length - 1)];
+            const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
+            next.implicitMods = [{
+              modId: pick.id,
+              group: pick.group,
+              text: formatText(tier.text, values),
+              values,
+              corrupted: true,
+            }];
+            message = '瓦尔宝珠：物品腐化，并获得腐化基底「' + next.implicitMods[0].text.split('\n')[0] + '」。';
+          } else {
+            message = '瓦尔宝珠：物品腐化，但没有别的变化。';
+          }
+        } else if (roll === 2 && next.affixes.length) {
+          rerollAffixValues(next, rng);
+          message = '瓦尔宝珠：物品腐化，并重掷了所有词缀数值。';
+        } else {
+          const removable = next.affixes.filter((a) => !a.fractured);
+          if (removable.length) {
+            const victim = removable[randInt(rng, 0, removable.length - 1)];
+            next.affixes = next.affixes.filter((a) => a !== victim);
+            message = '瓦尔宝珠：物品腐化，并移除了「' + victim.text.split('\n')[0] + '」。';
+          } else {
+            message = '瓦尔宝珠：物品腐化。';
+          }
+        }
+        break;
+      }
+      case 'omen_clear': {
+        const n = armedOmens(next).length;
+        if (!n) return fail('没有已激活的预兆。');
+        next.meta.omens = [];
+        message = '取消 ' + n + ' 个已激活预兆（不退还费用）。';
+        break;
+      }
       case 'omen': {
-        if (next.rarity !== 'rare') return fail('预兆需要稀有物品。');
         const omen = (D.omens || []).find((x) => x.id === action.omenId);
         if (!omen) return fail('未知预兆。');
-        const removable = next.affixes.filter((a) => !a.fractured);
-        if (action.omenId === 'omen_whittling') {
-          if (!removable.length) return fail('没有可移除的词缀。');
-          const victim = removable.slice().sort((a, b) => a.tierIlvl - b.tierIlvl)[0];
-          next.affixes = next.affixes.filter((a) => a !== victim);
-          message = '预兆：移除了最低等级的「' + victim.text.split('\n')[0] + '」。';
-        } else if (action.omenId === 'omen_sinistral_erasure' || action.omenId === 'omen_dextral_erasure') {
-          const side = action.omenId === 'omen_sinistral_erasure' ? 'prefix' : 'suffix';
-          const pool = removable.filter((a) => a.affix === side);
-          if (!pool.length) return fail('该侧没有可移除的词缀。');
-          const victim = pool[randInt(rng, 0, pool.length - 1)];
-          next.affixes = next.affixes.filter((a) => a !== victim);
-          message = '预兆：移除了' + (side === 'prefix' ? '前缀' : '后缀') + '「' + victim.text.split('\n')[0] + '」。';
-        } else {
-          const side = action.omenId === 'omen_sinistral_exalt' ? 'prefix'
-            : action.omenId === 'omen_dextral_exalt' ? 'suffix' : null;
-          const count = action.omenId === 'omen_greater_exalt' ? 2 : 1;
-          if (side && !canAdd(next, side)) return fail('该侧词缀已满。');
-          if (!side && !canAdd(next, 'prefix') && !canAdd(next, 'suffix')) return fail('词缀已满。');
-          let added = 0;
-          for (let i = 0; i < count; i++) {
-            const s = side || chooseSide(next, rng);
-            if (!s || !addRandomAffix(next, s, rng, {})) break;
-            added++;
-          }
-          if (!added) return fail('没有成功增加词缀。');
-          message = '预兆：增加 ' + added + ' 条' + (side ? (side === 'prefix' ? '前缀' : '后缀') : '随机') + '词缀。';
-        }
+        const blocked = omenAvailability(next, action.omenId);
+        if (blocked) return fail(blocked);
+        if (armedOmens(next).some((o) => o.id === omen.id)) return fail('该预兆已激活。');
+        next.meta.omens = armedOmens(next).concat([{
+          id: omen.id, name: omen.name, effect: omen.effect,
+          appliesTo: omen.appliesTo || null, cost: omen.cost,
+        }]);
+        message = '激活预兆「' + omen.name + '」：作用于下一次' + (omen.appliesTo === 'exalted' ? '崇高石'
+          : omen.appliesTo === 'chaos' ? '混沌石' : omen.appliesTo === 'annulment' ? '剥离石'
+          : omen.appliesTo === 'regal' ? '富豪石' : omen.appliesTo === 'alchemy' ? '点金石'
+          : omen.appliesTo === 'divine' ? '神圣石' : omen.appliesTo === 'chance' ? '机会石'
+          : omen.appliesTo === 'vaal' ? '瓦尔宝珠' : '对应操作') + '。';
         break;
       }
       default:
@@ -690,6 +1133,12 @@
       }).join(' / '));
     }
     if (base.implicit) lines.push('--------', base.implicit);
+    (item.implicitMods || []).forEach((m) => lines.push('腐化基底：' + m.text));
+    if (item.quality) lines.push('品质: +' + item.quality + '%');
+    (item.runes || []).forEach((id) => {
+      const r = runeDef(id);
+      if (r) lines.push(runeText(r) + '  [符文]');
+    });
     if (item.affixes.length) {
       lines.push('--------');
       item.affixes.forEach((a) => {
@@ -697,58 +1146,285 @@
         a.text.split('\n').forEach((l) => lines.push(l + (l === a.text.split('\n')[0] ? '  ' + tierLabel(a.tierRank) + tag : '')));
       });
     }
+    if (item.corrupted) lines.push('--------', '已腐化');
     return lines.join('\n');
+  }
+
+  function runeValues(rune) {
+    if (!rune) return [];
+    const vals = (rune.v || []).slice();
+    if (Array.isArray(rune.v2)) vals.push(rune.v2[0]);
+    return vals;
+  }
+
+  /* 按词缀文本解析它给什么属性。
+   * 正式版数据有 160+ 词缀组 / 1600+ 档位，按 group id 硬编码映射不可维护；
+   * 这里直接解析官方 stat 文本模板（"#% increased Armour" / "+# to maximum Life"），
+   * 对单条词缀、复合词缀、符文都能用同一套规则。 */
+  const STAT_RULES = [
+    { re: /^\+?\{(\d)\}% increased maximum Life$/, apply: (a, v) => { a.lifePct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased maximum Mana$/, apply: (a, v) => { a.manaPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased maximum Energy Shield$/, apply: (a, v) => { a.esPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to maximum Life$/, apply: (a, v) => { a.life += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to maximum Mana$/, apply: (a, v) => { a.mana += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to maximum Energy Shield$/, apply: (a, v) => { a.esFlat += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to Armour$/, apply: (a, v) => { a.arFlat += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to Evasion Rating$/, apply: (a, v) => { a.evFlat += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Armour and Evasion$/, apply: (a, v) => { a.arPct += num(v[0]); a.evPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Armour and Energy Shield$/, apply: (a, v) => { a.arPct += num(v[0]); a.esPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Evasion and Energy Shield$/, apply: (a, v) => { a.evPct += num(v[0]); a.esPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Armour$/, apply: (a, v) => { a.arPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Evasion Rating$/, apply: (a, v) => { a.evPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Energy Shield$/, apply: (a, v) => { a.esPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Fire Resistance$/, apply: (a, v) => { a.res.fire += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Cold Resistance$/, apply: (a, v) => { a.res.cold += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Lightning Resistance$/, apply: (a, v) => { a.res.light += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Chaos Resistance$/, apply: (a, v) => { a.res.chaos += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to all Elemental Resistances$/, apply: (a, v) => { a.res.fire += num(v[0]); a.res.cold += num(v[0]); a.res.light += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Maximum Fire Resistance$/, apply: (a, v) => { a.maxRes.fire += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Maximum Cold Resistance$/, apply: (a, v) => { a.maxRes.cold += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Maximum Lightning Resistance$/, apply: (a, v) => { a.maxRes.light += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Maximum Chaos Resistance$/, apply: (a, v) => { a.maxRes.chaos += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to all Maximum Elemental Resistances$/, apply: (a, v) => { a.maxRes.fire += num(v[0]); a.maxRes.cold += num(v[0]); a.maxRes.light += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to Accuracy Rating$/, apply: (a, v) => { a.accuracy += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Attack Speed$/, apply: (a, v) => { a.atkSpeed += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Cast Speed$/, apply: (a, v) => { a.castSpeed += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Movement Speed$/, apply: (a, v) => { a.moveSpeed += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Physical Damage$/, apply: (a, v) => { a.physPct += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Critical Hit Chance$/, apply: (a, v) => { a.critChance += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Critical Hit Chance$/, apply: (a, v) => { a.critChance += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% to Critical Damage Bonus$/, apply: (a, v) => { a.critMulti += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Critical Damage Bonus$/, apply: (a, v) => { a.critMulti += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Spirit$/, apply: (a, v) => { a.spirit += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to Spirit$/, apply: (a, v) => { a.spirit += num(v[0]); } },
+    { re: /^\+?\{(\d)\} to Stun Threshold$/, apply: (a, v) => { a.stunThreshold += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Rarity of Items found$/, apply: (a, v) => { a.rarity += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Spell Damage$/, apply: (a, v) => { a.spellPct += num(v[0]); } },
+    { re: /^Adds \{(\d)\} to \{(\d)\} Physical Damage/, apply: (a, v) => { a.physFlat += avg(v[0], v[1]); } },
+    { re: /^Adds \{(\d)\} to \{(\d)\} Fire Damage/i, apply: (a, v) => { a.fireFlat += avg(v[0], v[1]); } },
+    { re: /^Adds \{(\d)\} to \{(\d)\} Cold Damage/i, apply: (a, v) => { a.coldFlat += avg(v[0], v[1]); } },
+    { re: /^Adds \{(\d)\} to \{(\d)\} Lightning Damage/i, apply: (a, v) => { a.lightFlat += avg(v[0], v[1]); } },
+    { re: /^Gain \{(\d)\}% of Damage as Extra Physical Damage$/, apply: (a, v) => { a.extraPhys += num(v[0]); } },
+    { re: /^Gain \{(\d)\}% of Damage as Extra Fire Damage$/, apply: (a, v) => { a.extraFire += num(v[0]); } },
+    { re: /^Gain \{(\d)\}% of Damage as Extra Cold Damage$/, apply: (a, v) => { a.extraCold += num(v[0]); } },
+    { re: /^Gain \{(\d)\}% of Damage as Extra Lightning Damage$/, apply: (a, v) => { a.extraLight += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Flask Life Recovery rate$/, apply: (a, v) => { a.flaskLife += num(v[0]); } },
+    { re: /^\+?\{(\d)\}% increased Flask Mana Recovery rate$/, apply: (a, v) => { a.flaskMana += num(v[0]); } },
+  ];
+  function num(x) { return Number.isFinite(Number(x)) ? Number(x) : 0; }
+  function avg(a, b) { return (num(a) + num(b)) / 2; }
+
+  function emptyStats() {
+    return {
+      life: 0, lifePct: 0, mana: 0, manaPct: 0,
+      esFlat: 0, esPct: 0, arFlat: 0, arPct: 0, evFlat: 0, evPct: 0,
+      physFlat: 0, physPct: 0, atkSpeed: 0, castSpeed: 0, moveSpeed: 0,
+      critChance: 0, critMulti: 0, accuracy: 0, spirit: 0, stunThreshold: 0, rarity: 0,
+      spellPct: 0, fireFlat: 0, coldFlat: 0, lightFlat: 0,
+      extraPhys: 0, extraFire: 0, extraCold: 0, extraLight: 0,
+      flaskLife: 0, flaskMana: 0,
+      res: { fire: 0, cold: 0, light: 0, chaos: 0 },
+      maxRes: { fire: 0, cold: 0, light: 0, chaos: 0 },
+    };
+  }
+
+  /* 已建模的旧 group 名（符文 / 灵魂核心用中文固定文本，走这里） */
+  function applyLegacyGroup(acc, group, v) {
+    switch (group) {
+      case 'life': acc.life += num(v[0]); break;
+      case 'mana': acc.mana += num(v[0]); break;
+      case 'es_flat': acc.esFlat += num(v[0]); break;
+      case 'es_pct': acc.esPct += num(v[0]); break;
+      case 'ar_flat': acc.arFlat += num(v[0]); break;
+      case 'ar_pct': acc.arPct += num(v[0]); break;
+      case 'ev_flat': acc.evFlat += num(v[0]); break;
+      case 'ev_pct': acc.evPct += num(v[0]); break;
+      case 'accuracy': acc.accuracy += num(v[0]); break;
+      case 'stun_threshold': acc.stunThreshold += num(v[0]); break;
+      case 'life_regen': acc.lifeRegen = (acc.lifeRegen || 0) + num(v[0]); break;
+      case 'chaos_damage_pct': acc.chaosPct = (acc.chaosPct || 0) + num(v[0]); break;
+      case 'res_fire': acc.res.fire += num(v[0]); break;
+      case 'res_cold': acc.res.cold += num(v[0]); break;
+      case 'res_light': acc.res.light += num(v[0]); break;
+      case 'res_chaos': acc.res.chaos += num(v[0]); break;
+      case 'all_res':
+        acc.res.fire += num(v[0]); acc.res.cold += num(v[0]); acc.res.light += num(v[0]); break;
+      case 'weapon_phys_flat': acc.physFlat += avg(v[0], v[1]); break;
+      case 'weapon_phys_pct': acc.physPct += num(v[0]); break;
+      case 'attack_speed': acc.atkSpeed += num(v[0]); break;
+      case 'cast_speed': acc.castSpeed += num(v[0]); break;
+      case 'move_speed': acc.moveSpeed += num(v[0]); break;
+      case 'crit_chance_weapon': acc.critChance += num(v[0]); break;
+      case 'crit_multi': acc.critMulti += num(v[0]); break;
+      case 'weapon_fire_flat': acc.fireFlat += avg(v[0], v[1]); break;
+      case 'weapon_cold_flat': acc.coldFlat += avg(v[0], v[1]); break;
+      case 'weapon_light_flat': acc.lightFlat += avg(v[0], v[1]); break;
+    }
+  }
+
+  /* 把一条词缀文本拆成若干行 stat，逐行套规则 */
+  /* 腐化基底词缀池：只取 kind==='corruption' 且适配当前底子的词缀。
+   * 这批数据在正式数据里共 79 条，瓦尔宝珠「加腐化基底」结果从这里抽。 */
+  function corruptionCandidates(item) {
+    const base = getBase(item.baseId);
+    if (!base) return [];
+    const out = [];
+    for (const mod of D.mods) {
+      if (mod.kind !== 'corruption') continue;
+      if (!modEligibleOnBase(mod, base, item)) continue;
+      if (!mod.tiers || !mod.tiers.length) continue;
+      out.push(mod);
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 深渊 / 亵渎词缀（Abyss Desecrated）
+   *
+   * 游戏里用「保存之骨」类通货对稀有物品使用：暴露出若干条深渊词缀供三选一。
+   * 这里按同一流程建模（流程简化，词缀本身来自正式数据）：
+   *   1. 词缀满 6 条时先移除 1 条非破裂词缀腾位；
+   *   2. 从 desecrated 池按部位 / 属性抽 3 条；
+   *   3. 玩家选定 1 条后加入物品，标记 desecrated。
+   * ------------------------------------------------------------------ */
+  function desecratedCandidates(item) {
+    const base = getBase(item.baseId);
+    if (!base) return [];
+    const groups = existingGroups(item);
+    const out = [];
+    for (const mod of D.mods) {
+      if (mod.kind !== 'desecrated') continue;
+      if (!modEligibleOnBase(mod, base, item)) continue;
+      if (!mod.tiers || !mod.tiers.length) continue;
+      if (groups[mod.group]) continue;
+      out.push(mod);
+    }
+    return out;
+  }
+  function desecrateAvailability(item) {
+    if (!item) return '没有物品';
+    if (item.corrupted) return '物品已腐化，不能亵渎';
+    if (item.rarity !== 'rare') return '亵渎只能用于稀有物品';
+    if (!desecratedCandidates(item).length) return '该底子没有可用的深渊词缀';
+    const space = canAdd(item, 'prefix') || canAdd(item, 'suffix');
+    const removable = item.affixes.some((a) => !a.fractured);
+    if (!space && !removable) return '词缀已满且没有可移除的词缀';
+    return null;
+  }
+  /* 抽 count 条不同词缀组的候选，数值已掷好，供界面三选一。
+   * 优先只抽「该侧还有空位」的词缀，避免玩家选完发现放不进去。 */
+  function desecrateChoices(item, rng, count) {
+    const n = Math.max(1, Number(count) || 3);
+    let pool = desecratedCandidates(item);
+    const openSides = ['prefix', 'suffix'].filter((s) => canAdd(item, s));
+    const fit = pool.filter((m) => openSides.indexOf(m.affix) !== -1);
+    if (fit.length) pool = fit;
+    pool = pool.slice();
+    const out = [];
+    while (out.length < n && pool.length) {
+      const idx = randInt(rng, 0, pool.length - 1);
+      const mod = pool.splice(idx, 1)[0];
+      const tier = pickTier(rng, mod, mod.tiers);
+      const values = tier.v.map((r) => roundVal(randFloat(rng, r[0], r[1])));
+      out.push({
+        modId: mod.id,
+        group: mod.group,
+        affix: mod.affix,
+        name: mod.name,
+        text: formatText(tier.text, values),
+        values,
+        tierRank: tierRank(mod, tier),
+        tierIlvl: tier.ilvl,
+      });
+    }
+    return out;
+  }
+  /* 把玩家选中的深渊词缀真正加到物品上 */
+  function applyDesecratedPick(item, choice) {
+    const mod = modById[choice.modId];
+    if (!mod) return { error: '未知的深渊词缀' };
+    const next = clone(item);
+    const aff = {
+      uid: uidCounter++,
+      modId: mod.id,
+      group: mod.group,
+      affix: mod.affix,
+      name: mod.name,
+      tierRank: choice.tierRank || 1,
+      tierIlvl: choice.tierIlvl || 1,
+      values: (choice.values || []).slice(),
+      text: choice.text,
+      tags: (mod.tags || []).slice(),
+      crafted: false,
+      fractured: false,
+      essence: false,
+      desecrated: true,
+      influence: null,
+      benchId: null,
+    };
+    next.affixes.push(aff);
+    next.affixes.sort((a, b) => (a.affix === b.affix ? 0 : a.affix === 'prefix' ? -1 : 1));
+    return { item: next, affix: aff };
+  }
+  function applyStatText(acc, text, values) {
+    const lines = String(text || '').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const rule = STAT_RULES.find((r) => r.re.test(trimmed));
+      if (rule) rule.apply(acc, values);
+    }
   }
 
   function derivedStats(item) {
     const base = getBase(item.baseId);
-    const res = { fire: 0, cold: 0, light: 0, chaos: 0 };
-    let life = 0, esFlat = 0, esPct = 0, arFlat = 0, arPct = 0, evFlat = 0, evPct = 0;
-    let physFlat = 0, physPct = 0, atkSpeed = 0, critChance = 0, critMulti = 0;
-    let fireFlat = 0, coldFlat = 0, lightFlat = 0;
+    const acc = emptyStats();
+
     item.affixes.forEach((a) => {
-      const v = a.values || [];
-      switch (a.group) {
-        case 'life': life += v[0] || 0; break;
-        case 'life_hybrid_es': life += v[0] || 0; esFlat += v[1] || 0; break;
-        case 'life_hybrid_ar': life += v[0] || 0; arFlat += v[1] || 0; break;
-        case 'life_hybrid_ev': life += v[0] || 0; evFlat += v[1] || 0; break;
-        case 'es_flat': esFlat += v[0] || 0; break;
-        case 'es_pct': esPct += v[0] || 0; break;
-        case 'ar_flat': arFlat += v[0] || 0; break;
-        case 'ar_pct': arPct += v[0] || 0; break;
-        case 'ev_flat': evFlat += v[0] || 0; break;
-        case 'ev_pct': evPct += v[0] || 0; break;
-        case 'res_fire': res.fire += v[0] || 0; break;
-        case 'res_cold': res.cold += v[0] || 0; break;
-        case 'res_light': res.light += v[0] || 0; break;
-        case 'res_chaos': res.chaos += v[0] || 0; break;
-        case 'all_res':
-          res.fire += v[0] || 0; res.cold += v[0] || 0; res.light += v[0] || 0; break;
-        case 'weapon_phys_flat': physFlat += ((v[0] || 0) + (v[1] || 0)) / 2; break;
-        case 'weapon_phys_pct': physPct += v[0] || 0; break;
-        case 'attack_speed': atkSpeed += v[0] || 0; break;
-        case 'crit_chance_weapon': critChance += v[0] || 0; break;
-        case 'crit_multi': critMulti += v[0] || 0; break;
-        case 'weapon_fire_flat': fireFlat += ((v[0] || 0) + (v[1] || 0)) / 2; break;
-        case 'weapon_cold_flat': coldFlat += ((v[0] || 0) + (v[1] || 0)) / 2; break;
-        case 'weapon_light_flat': lightFlat += ((v[0] || 0) + (v[1] || 0)) / 2; break;
-      }
+      applyStatText(acc, a.text, a.values || []);
+      applyLegacyGroup(acc, a.group, a.values || []); // 兼容旧存档里的中文词缀
     });
+    // 腐化基底词缀同样计入属性
+    (item.implicitMods || []).forEach((m) => applyStatText(acc, m.text, m.values || []));
+    (item.runes || []).forEach((id) => {
+      const r = runeDef(id);
+      if (!r) return;
+      // 符文文本是官方写法，走与词缀相同的解析规则；legacy group 保留作兜底
+      const eff = runeEffectFor(r, base);
+      const vals = (eff ? (eff.v || []) : runeValues(r)).map((x) => (Array.isArray(x) ? x[0] : x));
+      // applyStatText 需要模板（含 {n}）+ 数值，不能传渲染后的文本
+      applyStatText(acc, eff ? eff.text : r.text, vals);
+      applyLegacyGroup(acc, r.group, vals);
+    });
+
+    // 品质放大底子的基础防御与武器物理伤害（PoE2 品质的实际作用）
+    const q = 1 + (item.quality || 0) / 100;
+    const baseDef = base.defence || {};
+    const lifePctMult = 1 + acc.lifePct / 100;
+    const manaPctMult = 1 + acc.manaPct / 100;
     let dps = null, aps = null, crit = null;
-    if (base.weapon) {
+    if (base.weapon && Array.isArray(base.weapon.phys)) {
       const w = base.weapon;
-      const avg = ((w.phys[0] + w.phys[1]) / 2) * (1 + physPct / 100) + physFlat;
-      aps = w.aps * (1 + atkSpeed / 100);
-      crit = w.crit * (1 + critChance / 100);
-      dps = avg * aps;
+      const physAvg = ((w.phys[0] + w.phys[1]) / 2) * q * (1 + acc.physPct / 100) + acc.physFlat;
+      aps = (w.aps || 1) * (1 + acc.atkSpeed / 100);
+      crit = (w.crit || 5) * (1 + acc.critChance / 100);
+      // 额外伤害按当前物理均值折算进 DPS
+      const extraMult = 1 + (acc.extraPhys + acc.extraFire + acc.extraCold + acc.extraLight) / 100;
+      dps = physAvg * aps * extraMult;
     }
     return {
-      life, es: esFlat + ((base.defence && base.defence.es) || 0) * (1 + esPct / 100),
-      ar: arFlat + ((base.defence && base.defence.ar) || 0) * (1 + arPct / 100),
-      ev: evFlat + ((base.defence && base.defence.ev) || 0) * (1 + evPct / 100),
-      res, dps, aps, crit, critMulti,
-      physFlat, physPct, atkSpeed,
+      life: acc.life * lifePctMult,
+      mana: acc.mana * manaPctMult,
+      es: acc.esFlat + (baseDef.es || 0) * q * (1 + acc.esPct / 100),
+      ar: acc.arFlat + (baseDef.ar || 0) * q * (1 + acc.arPct / 100),
+      ev: acc.evFlat + (baseDef.ev || 0) * q * (1 + acc.evPct / 100),
+      res: acc.res, maxRes: acc.maxRes, dps, aps, crit,
+      critMulti: acc.critMulti,
+      accuracy: acc.accuracy, spirit: acc.spirit, stunThreshold: acc.stunThreshold,
+      rarity: acc.rarity, spellPct: acc.spellPct,
+      moveSpeed: acc.moveSpeed, atkSpeed: acc.atkSpeed, castSpeed: acc.castSpeed,
+      physFlat: acc.physFlat, physPct: acc.physPct,
+      quality: item.quality || 0,
     };
   }
 
@@ -814,6 +1490,9 @@
   function actionAvailability(item, type) {
     const space = canAdd(item, 'prefix') || canAdd(item, 'suffix');
     const removable = item.affixes.some((a) => !a.fractured);
+    // 腐化后普通通货全部不可用，理由统一（与 applyAction 的拦截保持一致）。
+    const CORRUPT_BLOCKED = ['transmute', 'augmentation', 'regal', 'alchemy', 'chaos', 'exalted', 'annulment', 'divine', 'whetstone', 'scrap'];
+    if (item.corrupted && CORRUPT_BLOCKED.indexOf(type) !== -1) return '物品已腐化，不能用普通通货';
     switch (type) {
       case 'transmute': return item.rarity === 'normal' ? null : '只能用于普通物品';
       case 'augmentation': return item.rarity === 'magic' && space ? null : (item.rarity !== 'magic' ? '只能用于魔法物品' : '魔法物品已有 2 条词缀');
@@ -823,35 +1502,95 @@
       case 'exalted': return item.rarity === 'rare' && space ? null : (item.rarity !== 'rare' ? '只能用于稀有物品' : '词缀已满');
       case 'annulment': return (item.rarity === 'rare' || item.rarity === 'magic') && removable ? null : (removable ? '只能用于魔法 / 稀有物品' : '没有可移除词缀');
       case 'divine': return (item.rarity === 'rare' || item.rarity === 'magic') && item.affixes.length ? null : '没有可重掷的词缀';
+      case 'whetstone': {
+        if (getBase(item.baseId).slot !== 'weapon') return '磨刀石只能用于武器';
+        if (item.rarity === 'normal') return '先做成魔法 / 稀有再加品质';
+        return (item.quality || 0) >= 20 ? '品质已达上限 20%。' : null;
+      }
+      case 'scrap': {
+        const base = getBase(item.baseId);
+        if (base.slot === 'weapon') return '护甲片不能用于武器';
+        if (!canSocket(base)) return '护甲片只能用于护甲 / 盾 / 法器';
+        if (item.rarity === 'normal') return '先做成魔法 / 稀有再加品质';
+        return (item.quality || 0) >= 20 ? '品质已达上限 20%。' : null;
+      }
+      case 'vaal': return item.corrupted ? '物品已经腐化' : null;
+      case 'desecrate': return desecrateAvailability(item);
+    case 'omen_clear': return (armedOmens(item).length) ? null : '没有已激活的预兆';
+      case 'desecrate_pick': return null;
       default: return '不可用';
     }
   }
-  function essenceAvailability(item, essence) {
+  /* 取该精华对当前物品生效的那条效果：先按槽位匹配，武器再按类别匹配。
+   * 正式数据里同一条精华对不同部位给的效果不同（例如躯体精华对护甲给生命、
+   * 对首饰给另一档生命），所以必须按物品实际部位挑一条。 */
+  function essenceDescForItem(item, essence) {
     const base = getBase(item.baseId);
-    if (!base || !essence) return '无效精华';
-    const cat = (base.slot === 'weapon' || base.slot === 'quiver') ? 'weapon'
-      : (base.slot === 'ring' || base.slot === 'amulet' || base.slot === 'belt') ? 'jewellery' : 'armour';
-    const desc = (essence.bySlot && essence.bySlot[base.slot]) || (essence.byCat && essence.byCat[cat]);
-    if (!desc) return '该精华不支持此物品';
-    if (existingGroups(item)[desc.group]) return '已有同组词缀';
-    if (essence.perfect) {
-      if (item.rarity !== 'rare') return 'Perfect 精华只能用于稀有物品';
+    if (!base || !essence || !Array.isArray(essence.effects)) return null;
+    const weaponClasses = (base.weapon && base.weapon.class) || [];
+    const candidates = essence.effects.filter((eff) => (eff.slots || []).indexOf(base.slot) !== -1);
+    if (!candidates.length) return null;
+    if (base.slot === 'weapon') {
+      const byClass = candidates.filter((eff) => !eff.weapons || !eff.weapons.length
+        || eff.weapons.some((w) => weaponClasses.indexOf(w) !== -1));
+      return byClass[0] || null;
+    }
+    return candidates[0];
+  }
+  /* 精华可用性：部位支持 / 稀有度按档位判定。
+   * 界面的不可用理由、applyAction 的失败原因、顾问的候选过滤都只走这一处。 */
+  function essenceAvailability(item, essence) {
+    if (!essence) return '未知精华。';
+    const eff = essenceDescForItem(item, essence);
+    if (!eff) return '该精华不支持此物品';
+    if (essence.perfect || essence.tier === 4) {
+      if (item.rarity !== 'rare') return '完美精华只能用于稀有物品';
       if (!item.affixes.some((a) => !a.fractured)) return '没有可移除词缀';
-    } else if (item.rarity !== 'magic') {
-      return '强效精华只能用于魔法物品';
+      if (!canAdd(item, eff.affix) && !item.affixes.some((a) => !a.fractured)) return '词缀已满';
+    } else {
+      if (item.rarity !== 'magic') return '该档精华只能用于魔法物品';
+      if (!canAdd(item, eff.affix)) return '该侧词缀已满（' + (eff.affix === 'prefix' ? '前缀' : '后缀') + '）';
     }
     return null;
   }
   function omenAvailability(item, omenId) {
-    if (item.rarity !== 'rare') return '预兆需要稀有物品';
-    const removable = item.affixes.filter((a) => !a.fractured);
-    if (omenId === 'omen_whittling') return removable.length ? null : '没有可移除词缀';
-    if (omenId === 'omen_sinistral_erasure') return removable.some((a) => a.affix === 'prefix') ? null : '没有可移除前缀';
-    if (omenId === 'omen_dextral_erasure') return removable.some((a) => a.affix === 'suffix') ? null : '没有可移除后缀';
-    if (omenId === 'omen_sinistral_exalt') return canAdd(item, 'prefix') ? null : '前缀已满';
-    if (omenId === 'omen_dextral_exalt') return canAdd(item, 'suffix') ? null : '后缀已满';
-    if (omenId === 'omen_greater_exalt') return (canAdd(item, 'prefix') || canAdd(item, 'suffix')) ? null : '词缀已满';
-    return '未知预兆';
+    const def = (D.omens || []).find((o) => o.id === omenId);
+    if (!def) return '未知预兆。';
+    if (def.implemented === false) return '该预兆的效果尚未建模';
+    if (item.corrupted) return '物品已腐化';
+    if (armedOmens(item).some((o) => o.id === omenId)) return '该预兆已激活';
+    return null;
+  }
+
+
+
+  /* app.js 的存档 / 导入流程会调用 syncMetaFlags 修正 meta 标记。
+   * PoE2 没有 meta 工艺，这里只需要保证 meta 结构存在且是布尔值，
+   * 但仍然必须提供这个函数：缺了它，loadState 会抛错并静默丢掉整个存档。 */
+  /* 旧存档 / 手写 JSON 可能没有 quality / corrupted / sockets / runes 字段。
+   * 统一补齐，避免界面与规则判断读到 undefined。 */
+  function normalizeItem(item) {
+    if (!item) return item;
+    const base = getBase(item.baseId);
+    if (typeof item.quality !== 'number' || !Number.isFinite(item.quality)) item.quality = 0;
+    item.corrupted = !!item.corrupted;
+    item.affixes = item.affixes || [];
+    item.influences = item.influences || [];
+    if (typeof item.sockets !== 'number' || !Number.isFinite(item.sockets)) item.sockets = defaultSockets(base);
+    item.runes = (Array.isArray(item.runes) ? item.runes : []).filter((id) => !!runeDef(id));
+    item.implicitMods = (Array.isArray(item.implicitMods) ? item.implicitMods : []);
+    if (item.runes.length > item.sockets) item.runes = item.runes.slice(0, item.sockets);
+    item.meta = item.meta || { multimod: false };
+    item.meta.omens = item.meta.omens || [];
+    item.meta.omens = item.meta.omens || [];
+    item.meta.multimod = !!item.meta.multimod;
+    return item;
+  }
+
+  function syncMetaFlags(item) {
+    if (!item) return item;
+    normalizeItem(item);
+    return item;
   }
 
   const api = {
@@ -862,7 +1601,8 @@
     itemText, itemName, rarityName, derivedStats, benchOptions, validBench,
     removeAffix, addManualAffix, syncUid, sides, canAdd, sideCap, craftedCount, maxCrafted,
     baseDefenceTags, formatText, fmtNum, tierLabel, benchById, modById, essenceById, fossilById,
-    actionAvailability, omenAvailability, essenceAvailability,
+    actionAvailability, omenAvailability, essenceAvailability, essenceDescForItem, syncMetaFlags,
+    corruptionCandidates, desecratedCandidates, baseTags, weightFor, desecrateAvailability, desecrateChoices, runeDef, runeValues, runeText, runeStatText, runeEffectFor, runeEligibleOnBase, runeAvailability, clearSocketsAvailability, canSocket, normalizeItem,
   };
 
   global.PoE2Engine = api;

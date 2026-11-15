@@ -570,6 +570,14 @@ body::before {
 .socket-empty { color: var(--muted-2); font-size: 10px; }
 .item-sockets { margin: 5px 0 6px; }
 
+/* PoE2 符文 / 插槽 */
+.item-runes { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 5px 0 6px; }
+.item-rune { padding: 2px 7px; border-radius: 5px; border: 1px solid var(--rc, #9aa); color: var(--rc, #cfd6e2); background: rgba(255, 255, 255, .04); font-size: 10px; line-height: 1.7; }
+.item-rune-empty { color: var(--muted-2); font-size: 10px; }
+.rune-slots { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; padding: 7px 9px; border: 1px solid rgba(255, 255, 255, .07); border-radius: 8px; background: rgba(0, 0, 0, .14); font-size: 10px; color: var(--muted); }
+.rune-chip { padding: 2px 7px; border-radius: 5px; border: 1px solid var(--rc, #9aa); color: var(--rc, #cfd6e2); background: rgba(255, 255, 255, .04); font-size: 10px; }
+.rune-empty { color: var(--muted-2); }
+
 .donor-stash { margin-bottom: 9px; padding: 8px 9px; border: 1px solid rgba(255, 255, 255, .065); border-radius: 8px; background: rgba(255, 255, 255, .012); }
 .donor-stash > b { display: block; color: var(--gold-dim); font-size: 9px; letter-spacing: .1em; margin-bottom: 5px; }
 .donor-chips { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -580,3 +588,11 @@ body::before {
 .donor-stash > b { display: inline-block; margin-right: 8px; }
 .donor-clear { padding: 2px 6px; border: 1px solid rgba(255, 255, 255, .09); border-radius: 4px; color: var(--muted-2); font-size: 8px; background: transparent; }
 .donor-clear:hover { border-color: rgba(200, 100, 100, .4); color: #d99; }
+
+/* 深渊词缀三选一 */
+.desecrate-list { display: flex; flex-direction: column; gap: 8px; }
+.desecrate-option { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; text-align: left;
+  border: 1px solid rgba(160, 122, 208, .35); border-radius: 8px; background: rgba(160, 122, 208, .06); color: var(--text); cursor: pointer; }
+.desecrate-option:hover { border-color: rgba(160, 122, 208, .7); background: rgba(160, 122, 208, .12); }
+.desecrate-text { flex: 1; font-size: 12px; line-height: 1.6; }
+.desecrate-tier { color: var(--muted-2); font-size: 10px; white-space: nowrap; }
