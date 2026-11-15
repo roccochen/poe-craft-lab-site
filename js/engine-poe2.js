@@ -2226,7 +2226,7 @@
         tier: a.tierRank || 1,
         group: a.group,
         side: a.affix,
-        name: def.name,
+        name: def.name || def.text || a.modId,
         tierIlvl: a.tierIlvl || 1,
       });
     }
