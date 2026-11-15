@@ -130,21 +130,22 @@
     });
   }
 
+  /* 不再内置「模板目标」：新玩家从空目标开始，目标由玩家自己定。 */
+  const DEFAULT_BASE = 'rusted_greathelm';
   function defaultState() {
-    const p = D.presets[0];
-    const ilvl = p.ilvl || 86;
-    const influences = (p.influences || []).slice();
+    const ilvl = 82;
+    const influences = [];
     return {
-      baseId: p.baseId,
+      baseId: DEFAULT_BASE,
       ilvl,
       influences,
-      item: E.createItem(p.baseId, { ilvl, influences }),
-      targets: normalizeTargetTiers(p.targets.map((t) => Object.assign({}, t)), p.baseId, ilvl),
+      item: E.createItem(DEFAULT_BASE, { ilvl, influences }),
+      targets: [],
       log: [],
       spent: 0,
       attempts: 0,
       history: [],
-      slot: E.getBase(p.baseId).slot,
+      slot: E.getBase(DEFAULT_BASE).slot,
       tab: (D.actionTabs && D.actionTabs[0] && D.actionTabs[0].id) || 'basic',
       targetSide: 'prefix',
       baseSearch: '',
@@ -1086,7 +1087,7 @@
   function restartFromScratch() {
     if (state.autoRunning) stopAuto('已清空当前方案。');
     const base = E.getBase(D.bases[0].id) || E.getBase(state.baseId);
-    const ilvl = Math.max(1, Math.min(100, (D.presets && D.presets[0] && D.presets[0].ilvl) || 86));
+    const ilvl = 82;
     state.baseId = base.id;
     state.slot = base.slot;
     state.ilvl = ilvl;
@@ -3213,21 +3214,6 @@
           }
         });
       }
-    }
-    /* 目标为空时才套预设；但物品已经有词缀时不能覆盖——
-     * 玩家可能正好在用「破裂底子 + 还没设目标」的状态，刷新一次就被清空就太伤了。 */
-    if (!state.targets.length && !((state.item && state.item.affixes) || []).length) {
-      const p = D.presets[0];
-      state.targets = normalizeTargetTiers(p.targets.map((t) => Object.assign({}, t)), p.baseId, p.ilvl);
-      state.baseId = p.baseId;
-      state.ilvl = p.ilvl || 86;
-      state.influences = (p.influences || []).slice();
-      state.item = E.createItem(p.baseId, { ilvl: state.ilvl, influences: state.influences });
-      state.slot = E.getBase(p.baseId).slot;
-      state.log = [];
-      state.spent = 0;
-      state.attempts = 0;
-      state.history = [];
     }
     /* 词缀按槽位切片：先把当前槽位那份取来，再画第一屏——
      * 存档里的装备可能是任意槽位，拿错切片会把目标词缀判成不适用。 */

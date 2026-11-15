@@ -228,60 +228,7 @@
     { tier: 4, name: '完美', suffix: false },
   ];
 
-  const presets = [
-    {
-      id: 'poe2_life_helmet', name: '生命双抗头盔', desc: '护甲头盔：生命 + 抗性，练手与实战都常用。',
-      baseId: 'rusted_greathelm', ilvl: 82, influences: [],
-      /* 三个目标都要高档的话期望会到 1000c+，对新手太劝退；
-       * 默认只把「生命」卡到本底最高档（tier 3 会被夹到该底子能掉的最好档），其余任意档。 */
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: null }, { modId: 'fireresist_s', tier: null }],
-    },
-    {
-      id: 'poe2_es_helmet', name: 'ES 双抗头盔', desc: '智慧底子：生命 + 火抗 + 电抗，适合法系。',
-      baseId: 'beaded_circlet', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_move_boots', name: '移速血抗鞋', desc: '移速 + 生命 + 火抗，鞋子最常见的组合。',
-      baseId: 'bronze_greaves', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_phys_staff', name: '物理长棍', desc: '物理伤害 + 攻速 + 命中，长棍主流路线。',
-      baseId: 'aegis_quarterstaff', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_caster_wand', name: '法系法杖', desc: '法术伤害 + 施法速度 + 魔力，法系武器通用。',
-      baseId: 'attuned_wand', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedmana', tier: 3 }, { modId: 'localincreasedphysicaldamagepercent', tier: 3 }, { modId: 'increasedattackspeed_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_ev_boots', name: '闪避移速鞋', desc: '闪避底子：移速 + 生命 + 抗性。',
-      baseId: 'cavalry_boots', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_bow', name: '物理弓', desc: '弓：物理伤害 + 攻速 + 命中。',
-      baseId: 'adherent_bow', ilvl: 82, influences: [],
-      targets: [{ modId: 'localincreasedphysicaldamagepercent', tier: 3 }, { modId: 'localincreasedphysicaldamagepercentandaccuracyrating', tier: 3 }, { modId: 'increasedattackspeed_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_staff', name: '元素长杖', desc: '长杖：法术伤害 + 施法速度 + 魔力。',
-      baseId: 'ashen_staff', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedmana', tier: 3 }, { modId: 'localincreasedphysicaldamagepercent', tier: 3 }, { modId: 'increasedattackspeed_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_quiver', name: '血抗箭袋', desc: '箭袋：生命 + 攻速 + 命中。',
-      baseId: 'broadhead_quiver', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedaccuracy', tier: 3 }, { modId: 'addedfiredamage', tier: 3 }, { modId: 'increasedattackspeed_s', tier: 3 }],
-    },
-    {
-      id: 'poe2_body', name: '护甲血抗胸', desc: '护甲胸甲：生命 + 护甲% + 双抗。',
-      baseId: 'chieftain_cuirass', ilvl: 82, influences: [],
-      targets: [{ modId: 'increasedlife', tier: 3 }, { modId: 'increasedmana', tier: 3 }, { modId: 'fireresist_s', tier: 3 }, { modId: 'coldresist_s', tier: 3 }],
-    },
-  ];
+
 
   /* 全量预兆：poe2wiki.net 抓取产物 js/data-poe2.omens.js。
    * 已建模的（6 条）可执行；其余仅展示官方名称与描述，界面上禁用并说明原因，
@@ -459,7 +406,6 @@
     bench: [],
     influences: [],
     harvestTags: [],
-    presets,
     omens,
     omenDataMeta,
     prices,
