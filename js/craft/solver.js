@@ -1308,32 +1308,40 @@
       pLose: o.act.trans.filter((t) => t.lose != null).reduce((n, t) => n + t.p, 0),
       outcomes: describe(model, sol, i0, o.act),
     });
-    /* 理想路线：每一步都走「出了目标」里最可能的那支 */
-    const route = [];
-    let cur = i0;
-    const seen = new Set();
-    while (cur !== undefined && !G.done[cur] && route.length < 12 && !seen.has(cur)) {
-      seen.add(cur);
-      let act = null;
-      if (cur === i0) act = best && best.act;
-      else if (pol[cur] >= 0) {
-        const want = policyAction(sol, cur);
-        act = actionsFor(model, G.states[cur]).find((a) => a.action === want) || null;
+    /* 理想路线：每一步都走「出了目标」里最可能的那支。
+     * 「换白底」也可能就是最优策略，那种情况从 freshId 再走一遍，给玩家一条换底子之后的路线。 */
+    function walk(start, firstAct) {
+      const out = [];
+      let cur = start;
+      const seen = new Set();
+      while (cur !== undefined && !G.done[cur] && out.length < 12 && !seen.has(cur)) {
+        seen.add(cur);
+        let act = null;
+        if (cur === start && firstAct) act = firstAct;
+        else if (pol[cur] >= 0) {
+          const want = policyAction(sol, cur);
+          act = actionsFor(model, G.states[cur]).find((a) => a.action === want) || null;
+        }
+        if (!act) break;
+        let pick = -1;
+        let bestP = -1;
+        act.trans.forEach((t, j) => {
+          const id = G.index.get(keyOf(t.s));
+          const good = t.hit != null && t.lose == null;
+          const score = (good ? 10 : 0) + t.p;
+          if (id !== cur && score > bestP) { bestP = score; pick = j; }
+        });
+        if (pick < 0) break;
+        const t = act.trans[pick];
+        out.push({ action: act.action, name: R.actionName(act.action, item), cost: act.cost, p: t.p, hit: t.hit != null ? targetName(model, t.hit) : null });
+        cur = G.index.get(keyOf(t.s));
       }
-      if (!act) break;
-      let pick = -1;
-      let bestP = -1;
-      act.trans.forEach((t, j) => {
-        const id = G.index.get(keyOf(t.s));
-        const good = t.hit != null && t.lose == null;
-        const score = (good ? 10 : 0) + t.p;
-        if (id !== cur && score > bestP) { bestP = score; pick = j; }
-      });
-      if (pick < 0) break;
-      const t = act.trans[pick];
-      route.push({ action: act.action, name: R.actionName(act.action, item), cost: act.cost, p: t.p, hit: t.hit != null ? targetName(model, t.hit) : null });
-      cur = G.index.get(keyOf(t.s));
+      return out;
     }
+    const route = walk(i0, best ? best.act : null);
+    const freshRoute = restartFirst && G.freshId >= 0 ? walk(G.freshId, null) : null;
+    /* 换底子是最优时的对照：这件上最省的做法要多少钱（action 留给界面翻译成文字） */
+    const keepBest = restartFirst && top ? { action: top.act.action, name: R.actionName(top.act.action, item), cost: top.act.cost, total: top.total } : null;
     const pAttempt = sol.canRestart ? 1 - sol.X[G.freshId] : null;
     return Object.assign(head, {
       status: 'ok',
@@ -1341,6 +1349,8 @@
       next: restartFirst ? { restart: true, name: '换一个底子重来', cost: model.basePrice, total: sol.exit } : pack(best),
       alternatives: options.filter((o) => o !== best).slice(0, 6).map(pack),
       route,
+      freshRoute,
+      keepBest,
       perBase: sol.canRestart ? { pSuccess: pAttempt, bases: pAttempt > 0 ? 1 / pAttempt : Infinity, freshCost: G.freshValue } : null,
       states: G.states.length, converged: sol.converged, truncated: G.truncated, cached,
     });

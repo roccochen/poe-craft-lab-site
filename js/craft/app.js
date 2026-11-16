@@ -428,9 +428,13 @@
   function nextCard(plan) {
     const next = plan.next;
     if (next.restart) {
+      const keep = plan.keepBest;
       return '<div class="next"><div class="eyebrow">下一步</div><div class="next-title">这件不值得再投入，<em>换一个新底子</em></div>'
+        + (keep ? '<p class="next-how">继续在这件上做，最省的路子从这一步起平均还要 <b>' + fmt(keep.total) + '</b> 崇高石；'
+          + '换一个白底从头做平均 <b>' + fmt(next.total) + '</b>（已经算进买底子的钱）。</p>' : '')
         + '<p class="next-how">流放 2 没有洗白装备的通货。继续在这件上花钱，平均下来比换一个白底从头做更贵。'
         + '这个结论取决于底子的价格：如果这种底子很难弄到，把下面的「白底价格」调高，建议会跟着变。</p>'
+        + (plan.freshRoute && plan.freshRoute.length ? '<p class="small muted">换底子之后的路线画在下面，照着走就行。</p>' : '')
         + '<div class="row"><button class="btn primary big" data-act="restart" type="button">换好了，从白底继续</button>'
         + '<button class="btn" data-act="toggle-paste" type="button">新底子不一样，我粘贴</button></div></div>';
     }
@@ -450,10 +454,13 @@
   function figures(plan) {
     const c = plan.cost;
     const pb = plan.perBase;
-    return '<div class="figs"><div class="fig"><div class="fig-n">' + fmt(c.mean) + '</div><div class="fig-l">平均总花费（崇高石）</div></div>'
+    /* 换底子是最优策略时，这些数字讲的是「换白底重做」那条路，不是这件继续做 */
+    const restart = !!(plan.next && plan.next.restart);
+    return '<div class="figs"><div class="fig"><div class="fig-n">' + fmt(c.mean) + '</div><div class="fig-l">' + (restart ? '换白底重做的平均总花费' : '平均总花费') + '（崇高石）</div></div>'
       + '<div class="fig"><div class="fig-n">' + fmt(c.p50) + '</div><div class="fig-l">一半的人在这以内做完</div></div>'
       + '<div class="fig"><div class="fig-n">' + fmt(c.p90) + '</div><div class="fig-l">九成的人在这以内做完</div></div>'
-      + (pb && pb.bases > 1.5 ? '<div class="fig"><div class="fig-n">' + fmt(pb.bases) + '</div><div class="fig-l">平均要用掉的底子数</div></div>' : '') + '</div>';
+      + (pb && pb.bases > 1.5 ? '<div class="fig"><div class="fig-n">' + fmt(pb.bases) + '</div><div class="fig-l">平均要用掉的底子数</div></div>' : '')
+      + (restart && pb ? '<div class="fig"><div class="fig-n">' + pct(pb.pSuccess) + '</div><div class="fig-l">一个底子就做成的机会</div></div>' : '') + '</div>';
   }
   function sensBlock() {
     if (ui.sensBusy) return '<div class="row muted"><span class="spinner"></span>正在逐条试算…</div>';
@@ -484,14 +491,21 @@
       return head + '<div class="next"><div class="next-title">按现在的目标<em>做不出来</em></div>' + probs
         + '<div class="row"><button class="btn primary" data-act="go" data-v="targets" type="button">回去调整目标</button></div></div>';
     }
-    const route = plan.route.map((r, i) => (i ? '<i>→</i>' : '') + '<span>' + esc(actionLabel(r.action, state.item)) + (r.hit ? ' <b style="color:var(--good)">出' + esc(r.hit) + '</b>' : '') + '</span>').join('');
+    const restart = !!(plan.next && plan.next.restart);
+    const routeLine = (list) => list.map((r, i) => (i ? '<i>→</i>' : '') + '<span>' + esc(actionLabel(r.action, state.item)) + (r.hit ? ' <b style="color:var(--good)">出' + esc(r.hit) + '</b>' : '') + '</span>').join('');
+    const route = routeLine(plan.route);
+    /* 换底子是最优策略时，把「换白底之后怎么走」也画出来：第一步是买底子，后面是策略给出的路线 */
+    const freshRoute = plan.freshRoute && plan.freshRoute.length
+      ? '<span>买一个白底 ' + fmt(plan.next.cost) + '</span><i>→</i>' + routeLine(plan.freshRoute) : '';
     const alts = plan.alternatives.map((x) => '<div class="alt"><span>' + esc(actionLabel(x.action, state.item)) + '</span><span class="small muted">走完全程平均 ' + fmt(x.total) + '</span>'
       + '<span class="small ' + (x.total - plan.cost.mean < 0.005 * plan.cost.mean ? 'muted' : 'faint') + '">贵 ' + fmt(Math.max(0, x.total - plan.cost.mean)) + '</span></div>').join('');
     const log = state.log.slice(-8).reverse().map((l) => '<div>' + esc(l) + '</div>').join('');
     return head + nextCard(plan)
-      + '<div class="stack"><div class="spread"><h2 class="h2">做完这件大概要花多少</h2>' + estTag() + '</div>' + figures(plan)
+      + '<div class="stack"><div class="spread"><h2 class="h2">' + (restart ? '换白底重做大概要花多少' : '做完这件大概要花多少') + '</h2>' + estTag() + '</div>' + figures(plan)
       + '<div class="row small muted"><label class="row">一个这样的白底值多少崇高石？<input class="field num" type="number" min="0" step="0.5" data-bind="basePrice" value="' + state.basePrice + '"></label>'
       + '<span class="faint">底子越便宜，「没出就换」越划算。</span></div></div>'
+      + (freshRoute ? '<div class="stack"><h2 class="h2">换白底之后，顺利的话是这样</h2><div class="route">' + freshRoute + '</div>'
+        + '<p class="small faint">只画顺利的那一支：某一步没出目标，就回到「换一个新底子」重新开始。</p></div>' : '')
       + (route ? '<div class="stack"><h2 class="h2">顺利的话，路线是这样</h2><div class="route">' + route + '</div></div>' : '')
       + '<details class="fold"><summary>哪条目标最贵？放宽一档能省多少</summary><div style="margin-top:12px">' + sensBlock() + '</div></details>'
       + (alts ? '<details class="fold"><summary>这一步的其它选择</summary><div style="margin-top:8px">' + alts + '</div></details>' : '')
