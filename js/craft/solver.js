@@ -46,7 +46,7 @@
     const cap = R.caps(empty);
     const T = (targets || []).map((t, i) => {
       const rows = t.row ? [R.row(t.row)].filter(Boolean)
-        : R.data.rows.filter((r) => r.type === t.type && R.targetAccepts(base, t, { type: r.type, lvl: r.lvl, row: r.id }));
+        : R.data.rows.filter((r) => r.type === t.type && R.targetAccepts(base, t, { type: r.type, lvl: r.lvl, row: r.id, pool: r.pool }));
       const fams = new Set();
       for (const r of rows) for (const f of r.fam) fams.add(f);
       const gen = rows.length ? rows[0].gen : 'p';
@@ -67,7 +67,7 @@
 
   /* 把一条词缀行归类：命中第几个目标 / 占住第几个目标的家族 / 废词 */
   function classifyRow(model, row) {
-    const probe = { type: row.type, lvl: row.lvl, row: row.id };
+    const probe = { type: row.type, lvl: row.lvl, row: row.id, pool: row.pool };
     for (const t of model.T) if (R.targetAccepts(model.base, t.spec, probe)) return { hit: t.i };
     for (const t of model.T) if (row.fam.some((f) => t.fams.has(f))) return { block: t.i };
     return { junk: true };
@@ -89,7 +89,7 @@
     const lv = { hit: model.T.map(() => null), block: model.T.map(() => null), junk: [[], []] };
     for (const a of item.affixes) {
       if (a.unrevealed) { d = (a.gen === 'p' ? 1 : 2) + ((a.minLvl || 0) >= 40 ? 3 : 0); continue; }
-      const c = classifyRow(model, { type: a.type, lvl: a.lvl, id: a.row, fam: a.fam || [] });
+      const c = classifyRow(model, { type: a.type, lvl: a.lvl, id: a.row, pool: a.pool, fam: a.fam || [] });
       if (a.desecrated) desAt = D_USED;
       if (c.hit != null && st[c.hit] === 0) {
         if (a.desecrated && !a.fractured) desAt = D_HIT + c.hit;
@@ -169,7 +169,7 @@
       const eff = R.essenceEffect(model.empty, ess);
       if (!eff) continue;
       const row = eff.row ? R.row(eff.row) : null;
-      const probe = row ? { type: row.type, lvl: row.lvl, row: row.id } : { type: 'essence:' + ess.id, lvl: 1, row: null };
+      const probe = row ? { type: row.type, lvl: row.lvl, row: row.id, pool: row.pool } : { type: 'essence:' + ess.id, lvl: 1, row: null };
       const t = model.T.find((x) => R.targetAccepts(model.base, x.spec, probe));
       if (!t || SIDE[eff.gen] !== SIDE[t.gen]) continue;
       out.push({ id: ess.id, i: t.i, removing: R.isRemovingEssence(ess), g: SIDE[eff.gen] });
@@ -1260,9 +1260,12 @@
   /* 同一组目标、价格、底子下，解一次就够：玩家每做一步只是换了个起点。
    * 所以把最近一次的解留着，下一步直接查表。 */
   let lastSolve = null;
+  /* 只缓存真正影响计算的字段。目标的显示名（spec.name）随界面语言变，放进来会让切语言触发重解。 */
   function signature(model) {
     return JSON.stringify([
-      model.base.id, model.ilvl, model.T.map((t) => [t.spec, t.fracHit, t.fracBlock]), model.frac, model.hasFracture,
+      model.base.id, model.ilvl,
+      model.T.map((t) => [t.spec.type || null, t.spec.row || null, t.spec.tier || 0, t.spec.pool || null, t.fracHit, t.fracBlock]),
+      model.frac, model.hasFracture,
       model.prices, model.basePrice, model.allow, model.legacyOmens, R.sideModel(),
     ]);
   }
@@ -1273,6 +1276,8 @@
       if (id !== undefined) {
         const m = lastSolve.model;
         m.item = model.item; m.init = model.init; m.initLevels = model.initLevels;
+        /* 名字只用来显示：沿用缓存里的解，但换成这次请求的（当前语言的）目标写法 */
+        for (let i = 0; i < m.T.length; i++) if (model.T[i]) m.T[i].spec = model.T[i].spec;
         return { model: m, sol: lastSolve.sol, startId: id, cached: true };
       }
     }
@@ -1356,12 +1361,20 @@
     });
   }
 
-  /* 哪条目标最贵：逐条放宽一档 / 去掉，看期望花费降多少 */
+  /* 哪条目标最贵：逐条放宽一档 / 去掉，看期望花费降多少。
+   * 这一步要解 n+1 个完整子问题（6 条目标要 6 秒以上），所以：
+   *   · 基准解直接复用上一次的缓存（同一组目标刚刚解过）；
+   *   · 每开始一条目标就报告一次进度，界面可以显示「第几条」并允许取消。 */
   function sensitivity(item, targets, opts) {
-    const base = plan(item, targets, Object.assign({}, opts, { runs: 1, noCache: true }));
+    opts = opts || {};
+    const limit = targets.length;
+    const report = (i) => { if (typeof opts.progress === 'function') { try { opts.progress(i, limit); } catch (e) { /* 进度而已，别影响计算 */ } } };
+    /* 界面手上已经有同一组目标的解了，直接把平均花费传进来，省掉一次完整求解 */
+    const base = opts.baseMean > 0 ? { status: 'ok', cost: { mean: opts.baseMean } } : plan(item, targets, Object.assign({}, opts, { runs: 1 }));
     if (base.status !== 'ok') return [];
     const b = R.baseOf(item);
     return targets.map((t, i) => {
+      report(i);
       const out = { index: i, mean: base.cost.mean };
       const others = targets.filter((x, j) => j !== i);
       if (others.length) {

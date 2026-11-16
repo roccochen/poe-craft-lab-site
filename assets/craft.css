@@ -237,6 +237,9 @@ details.fold > summary::-webkit-details-marker { display: none; }
   .steps { order: 3; width: 100%; margin: 0; justify-content: space-between; }
   .tools { margin-left: auto; }
   .layout { grid-template-columns: 1fr; gap: 24px; padding: 20px 16px 80px; }
+  /* 单列时把「下一步」放前面：手机上先要看到该做什么，装备卡是参考信息 */
+  .layout > .stage { order: 1; }
+  .layout > .side { order: 2; }
   .side { position: static; max-height: none; }
   .title { font-size: 1.45rem; } .next-title { font-size: 1.5rem; }
   .next { padding: 22px 20px; }
@@ -258,3 +261,5 @@ details.fold > summary::-webkit-details-marker { display: none; }
 .ghost.small { padding: 2px 8px; font-size: .82rem; }
 .toast-act { margin-left: 14px; border: 0; background: none; color: var(--accent); font-weight: 600; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
 .toast-act:hover { text-decoration: underline; }
+.toast-close { margin-left: 10px; border: 0; background: none; color: var(--faint); font-size: 1.05rem; line-height: 1; padding: 2px 6px; border-radius: 50%; cursor: pointer; }
+.toast-close:hover { color: var(--text); background: var(--accent-soft); }

@@ -19,6 +19,8 @@
   const DM = req('CRAFT_MODS', './data.mods.js');
   const DX = req('CRAFT_MISC', './data.misc.js');
   const DZ = req('CRAFT_ZH', './data.zh.js') || { templates: [] };
+  /* 官方简体中文（国服客户端导出的原文）：有就用它，没有才退回「繁中转简」 */
+  const DZS = req('CRAFT_ZHS', './data.zhs.js') || { templates: [] };
 
   /* 游戏未公开、只能假设的部分。界面读这张表给对应数字打「估算」标。 */
   const ESTIMATES = {
@@ -26,7 +28,7 @@
     sideModel: '加词缀时前后缀合并成一个池按权重抽；游戏未公开是否先选侧',
     vaal: '瓦尔宝珠四种结果按等概率计算',
     quality: '品质单次增量随物品等级递减，具体数值为估计',
-    reveal: '亵渎揭露的三个选项按「常规池 + 深渊专属池」等权抽取',
+    reveal: '亵渎揭露：物品等级 65 以上保底一个深渊专属选项，其余从「常规池 + 深渊专属池」里按候选数量抽',
     desecrateSide: '亵渎词缀落在哪一侧按两侧可用词缀数量加权',
   };
 
@@ -187,7 +189,7 @@
   }
   function makeAffix(row, rng, extra) {
     return Object.assign({
-      row: row.id, type: row.type, fam: row.fam.slice(), gen: row.gen, lvl: row.lvl,
+      row: row.id, type: row.type, fam: row.fam.slice(), gen: row.gen, lvl: row.lvl, pool: row.pool,
       tags: row.tags.slice(), values: rollValues(row, rng),
     }, extra || {});
   }
@@ -258,29 +260,29 @@
   /* ------------------------------------------------------------------ 通货定义 */
   const CUR = {
     transmute: { zh: '蜕变石', kind: 'transmute', min: 0 },
-    transmute_greater: { zh: '高阶蜕变石', kind: 'transmute', min: 44 },
+    transmute_greater: { zh: '高级蜕变石', kind: 'transmute', min: 44 },
     transmute_perfect: { zh: '完美蜕变石', kind: 'transmute', min: 70 },
     augment: { zh: '增幅石', kind: 'augment', min: 0 },
-    augment_greater: { zh: '高阶增幅石', kind: 'augment', min: 44 },
+    augment_greater: { zh: '高级增幅石', kind: 'augment', min: 44 },
     augment_perfect: { zh: '完美增幅石', kind: 'augment', min: 70 },
     regal: { zh: '富豪石', kind: 'regal', min: 0 },
-    regal_greater: { zh: '高阶富豪石', kind: 'regal', min: 35 },
+    regal_greater: { zh: '高级富豪石', kind: 'regal', min: 35 },
     regal_perfect: { zh: '完美富豪石', kind: 'regal', min: 50 },
     exalt: { zh: '崇高石', kind: 'exalt', min: 0 },
-    exalt_greater: { zh: '高阶崇高石', kind: 'exalt', min: 35 },
+    exalt_greater: { zh: '高级崇高石', kind: 'exalt', min: 35 },
     exalt_perfect: { zh: '完美崇高石', kind: 'exalt', min: 50 },
     chaos: { zh: '混沌石', kind: 'chaos', min: 0 },
-    chaos_greater: { zh: '高阶混沌石', kind: 'chaos', min: 35 },
+    chaos_greater: { zh: '高级混沌石', kind: 'chaos', min: 35 },
     chaos_perfect: { zh: '完美混沌石', kind: 'chaos', min: 50 },
     alchemy: { zh: '点金石', kind: 'alchemy' },
     annul: { zh: '剥离石', kind: 'annul' },
     divine: { zh: '神圣石', kind: 'divine' },
     vaal: { zh: '瓦尔宝珠', kind: 'vaal' },
     fracture: { zh: '破裂石', kind: 'fracture' },
-    artificer: { zh: '工匠石', kind: 'artificer' },
+    artificer: { zh: '巧匠石', kind: 'artificer' },
     whetstone: { zh: '磨刀石', kind: 'quality' },
     scrap: { zh: '护甲片', kind: 'quality' },
-    etcher: { zh: '奥术蚀刻器', kind: 'quality' },
+    etcher: { zh: '奥术师的铭刻', kind: 'quality' },
     bone_gnawed: { zh: '啃噬之骨', kind: 'desecrate', maxIlvl: 64 },
     bone_preserved: { zh: '保存之骨', kind: 'desecrate' },
     bone_ancient: { zh: '远古之骨', kind: 'desecrate', min: 40 },
@@ -485,7 +487,7 @@
       case 'quality': {
         const ok = action.cur === 'whetstone' ? WEAPON_MARTIAL(base)
           : action.cur === 'etcher' ? WEAPON_CASTER(base) : IS_ARMOUR(base);
-        if (!ok) return ({ whetstone: '磨刀石只能用于近战 / 远程武器', etcher: '奥术蚀刻器只能用于法杖、长杖、权杖', scrap: '护甲片只能用于护甲' })[action.cur];
+        if (!ok) return ({ whetstone: '磨刀石只能用于近战 / 远程武器', etcher: '奥术师的铭刻只能用于法杖、长杖、权杖', scrap: '护甲片只能用于护甲' })[action.cur];
         return item.quality < 20 ? null : '品质已达 20% 上限';
       }
       case 'desecrate': {
@@ -690,10 +692,21 @@
   /* ------------------------------------------------------------------ 目标
    * target = { type, tier? }　tier 是这个底子上可接受的最低档（T 数字，1 最好）
    *          或 { row } 指定某一行（精华保底、亵渎专属词缀） */
+  /* 词缀属于哪个池：老存档里的词缀没有 pool 字段，退回按行 id 查 */
+  function affixPool(affix) {
+    if (affix.pool) return affix.pool;
+    const row = affix.row && rowById.get(affix.row);
+    return row ? row.pool : null;
+  }
+  /* 目标的池子必须和词缀的池子一致：深渊专属（x）只能靠亵渎拿，普通池里同名的行不能顶替 */
   function targetAccepts(base, target, affix) {
     if (!affix || affix.unrevealed) return false;
     if (target.row) return affix.row === target.row;
     if (affix.type !== target.type) return false;
+    if (target.pool) {
+      const p = affixPool(affix);
+      if (p && p !== target.pool) return false;
+    }
     if (!target.tier) return true;
     const rows = ladder(base, target.type, target.pool);
     const floor = rows[Math.min(rows.length, target.tier) - 1];
@@ -710,7 +723,12 @@
     return String(tpl).replace(/\{(\d+)\}/g, (m, i) => (values && values[i] != null ? String(values[i]) : m));
   }
   function rowTemplate(row, lang) {
-    if (lang !== 'en' && DZ.templates[row.t]) return lang === 'zhs' && global.CraftT2S ? global.CraftT2S(DZ.templates[row.t]) : DZ.templates[row.t];
+    if (lang === 'en') return DM.templates[row.t];
+    if (lang === 'zhs' && DZS.templates[row.t]) return DZS.templates[row.t];
+    if (DZ.templates[row.t]) {
+      /* 没有官方简中时退回「繁中转简」（逐字转换 + 术语覆盖） */
+      return lang === 'zhs' && global.CraftT2S ? global.CraftT2S(DZ.templates[row.t]) : DZ.templates[row.t];
+    }
     return DM.templates[row.t];
   }
   /* 档位的数值范围文本，如 "+(150–174) 最大生命" */
@@ -721,7 +739,13 @@
     if (affix.unrevealed) return lang === 'en' ? 'Unrevealed Desecrated Modifier' : '未揭露的亵渎词缀';
     const row = affix.row && rowById.get(affix.row);
     if (row) return fill(rowTemplate(row, lang), affix.values);
-    if (affix.tpl) return fill(lang !== 'en' && affix.zh ? affix.zh : affix.tpl, affix.values);
+    if (affix.tpl) {
+      /* 精华 / 符文这类只有 (英文, 繁中, 官方简中) 三份写法：按语言挑，缺简中就退回繁中转简 */
+      const text = lang === 'en' ? affix.tpl
+        : lang === 'zht' ? (affix.zh || affix.tpl)
+          : (affix.zhs || (affix.zh && global.CraftT2S ? global.CraftT2S(affix.zh) : affix.zh) || affix.tpl);
+      return fill(text, affix.values);
+    }
     return affix.text || '';
   }
   function augmentText(aug, base) {
@@ -767,6 +791,10 @@
     essenceTier: [0.5, 1.5, 6, 40, 60],   // 次级 / 普通 / 高阶 / 完美 / 腐化
     base: 0,
   };
+  /* 求解器不会建议、也不会用来计价的做法（见 ARCHITECTURE「不在求解范围内」）。
+   * 改价格不会影响任何建议，所以设置里不列这些，也不进求解器的缓存键。 */
+  const NOT_IN_SOLVER = { divine: true, vaal: true, fracture: true, artificer: true, whetstone: true, scrap: true, etcher: true };
+
   function cost(action, prices) {
     const p = Object.assign({}, DEFAULT_PRICES, prices || {});
     let c = 0;
@@ -789,7 +817,7 @@
   }
 
   const api = {
-    ESTIMATES, CUR, OMEN, DEFAULT_PRICES,
+    ESTIMATES, CUR, OMEN, DEFAULT_PRICES, NOT_IN_SOLVER,
     data: { bases: DB.bases, rows: DM.rows, essences: DX.essences, augments: DX.augments, omens: DX.omens, meta: DX.meta },
     base: (id) => baseById.get(id), row: (id) => rowById.get(id), essence: (id) => essenceById.get(id), augment: (id) => augmentById.get(id),
     weight, setWeights, eligibleRows, ladder, tierOf, typesFor, socketCap,
@@ -809,3 +837,5 @@
   (root.CraftSource = root.CraftSource || {}).rules = factory;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
+
+
