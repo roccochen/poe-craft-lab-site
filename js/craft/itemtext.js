@@ -1,8 +1,15 @@
 /* 流放 2 做装台 · 解析游戏内复制的物品文本（Ctrl+C / Ctrl+Alt+C）
  *
- * 支持英文、繁体中文（国际服）、简体中文三种客户端文本。
+ * 支持英文、繁体中文（国际服）、简体中文、国服（腾讯简体）的客户端文本。
  * 做法：先认出底子和物品等级，再把每一行词缀和「这个底子能出的词缀模板」逐条比对，
  * 数值落在哪一档的区间里就是哪一档。认不出的行保留原文，标成「未识别」，不会丢。
+ *
+ * 国服（腾讯）的简中不是国际服繁中的逐字转换，措辞、语序、底子名都可能不一样。所以这里分三层认：
+ *   1. 文本：把一句话改写成几种可能的语序（variants），繁中 / 简体 / 英文模板都比一遍；
+ *   2. 高级描述：Ctrl+Alt+C 的「{ 前缀属性 "总督的"（等阶：2）}」和「34 (33-38)%」里带着档位和区间，
+ *      就算一个词都不认识，也能靠「前后缀 + 等阶 + 数值区间」把这一行反查出来（matchByShape）；
+ *   3. 底子名：国服译名和繁中不是逐字对应（例如 Vile Robe 国服叫「邪恶束衣」、繁中叫「惡毒長袍」），
+ *      对不上时按「需求等级 / 力量敏捷智慧 / 防御类型」列出候选（guessBases），交给界面让玩家点一个。
  */
 (function (global) {
   'use strict';
@@ -21,6 +28,10 @@
   const SOCKETS = /^(?:Sockets|插槽)\s*[:：]\s*(.+)$/i;
   const CORRUPTED = /^(?:Corrupted|已汙染|已污染|已腐化)$/i;
   const SEP = /^-{4,}$/;
+  /* 第一块里不算底子名的行 */
+  const TOP = /^(?:Item Class|物品種類|物品类别|物品類別|Rarity|稀有度)\s*[:：]/i;
+  /* 高级描述的表头行：{ 前缀属性 "总督的"（等阶：2）— 生命, 能量护盾 } */
+  const HEADER = /^\{.*\}$/;
   /* 行尾的来源标记 */
   const MARKS = [
     [/\s*[（(](?:implicit|固定|基底)[)）]\s*$/i, 'implicit'],
@@ -33,22 +44,88 @@
   const UNREVEALED = /Unrevealed Desecrated|未揭露/i;
   /* 明显不是词缀的属性行 */
   const PROPERTY = /^(?:Item Class|物品種類|物品类别|物品類別|Requirements?|Requires|需求|Armour|Evasion Rating|Energy Shield|Block chance|Physical Damage|Elemental Damage|Critical Hit Chance|Attacks per Second|Reload Time|Spirit|護甲|护甲|閃避值|闪避值|能量護盾|能量护盾|格擋率|格挡率|物理傷害|物理伤害|元素傷害|元素伤害|暴擊率|暴击率|每秒攻擊次數|每秒攻击次数|Level|等級|等级|Str|Dex|Int|力量|敏捷|智慧|Stack Size|Note|備註|备注)\s*[:：]/i;
+  /* 需求行 / 防御行：认不出底子名时用来缩小范围 */
+  const REQ_LINE = /^(?:Requirements?|Requires|需求)\s*[:：]/i;
+  const DEF_LINE = /^(?:Armour|Evasion Rating|Energy Shield|護甲|护甲|閃避值|闪避值|能量護盾|能量护盾)\s*[:：]\s*[\d,]+/i;
+  const DEF_KEY = [
+    [/^(?:Armour|護甲|护甲)$/i, 'ar'],
+    [/^(?:Evasion Rating|閃避值|闪避值)$/i, 'ev'],
+    [/^(?:Energy Shield|能量護盾|能量护盾)$/i, 'es'],
+  ];
 
   const NUM = '[+-]?\\d+(?:\\.\\d+)?';
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  /* 模板 → 正则：占位符变成数字捕获组；Ctrl+Alt+C 会在数值后面带 (min-max)，一并吃掉 */
+  const clean = (s) => String(s).replace(/\s+/g, ' ').trim();
+
+  /* 比较之前先把「看不见的差异」抹平：全角半角、空格、各种破折号。
+   * 中文词缀里没有靠空格区分意思的地方，英文模板同一套规则处理，两边都不吃亏。 */
+  const FULL = { '＋': '+', '－': '-', '％': '%', '（': '(', '）': ')', '：': ':', '　': ' ', '–': '-', '—': '-' };
+  function squash(s) {
+    return String(s).replace(/[＋－％（）：　–—]/g, (c) => FULL[c] || c).replace(/\s+/g, '');
+  }
+
+  /* Ctrl+Alt+C 会在数值后面写这一档的区间：34 (33-38)%。那不是词缀文字，先摘出来留着 */
+  const RANGE = /[（(]\s*([+-]?\d+(?:\.\d+)?)\s*[-–—]\s*([+-]?\d+(?:\.\d+)?)\s*[)）]/g;
+  function stripRanges(text) {
+    const ranges = [];
+    const out = String(text).replace(RANGE, (m, a, b) => { ranges.push([Number(a), Number(b)]); return ''; });
+    return { text: out, ranges };
+  }
+
+  /* 模板 → 正则：占位符变成数字捕获组 */
   const reCache = new Map();
   function templateRegex(tpl) {
-    let re = reCache.get(tpl);
-    if (re) return re;
+    let hit = reCache.get(tpl);
+    if (hit) return hit;
     const order = [];
-    const src = esc(tpl).replace(/\\\{(\d+)\\\}/g, (m, i) => { order.push(Number(i)); return '(' + NUM + ')(?:\\(' + NUM + '[-–]' + NUM + '\\))?'; })
-      .replace(/^\\\+/, '\\+?').replace(/\s+/g, '\\s*');
-    re = { re: new RegExp('^' + src + '$', 'i'), order };
-    reCache.set(tpl, re);
-    return re;
+    const src = esc(squash(tpl))
+      .replace(/\\\{(\d+)\\\}/g, (m, i) => { order.push(Number(i)); return '(' + NUM + ')'; })
+      .replace(/^\\\+/, '\\+?');
+    hit = { re: new RegExp('^' + src + '$', 'i'), order };
+    reCache.set(tpl, hit);
+    return hit;
   }
-  const clean = (s) => String(s).replace(/\s+/g, ' ').trim();
+
+  /* 国服措辞 → 我们模板里的措辞。只收用真实客户端文本核对过的差异，宁可漏也不乱猜。
+   * 没列进来的也不用怕：Ctrl+Alt+C 的文本有等阶和区间，matchByShape 能兜住。 */
+  const CNS_TERMS = [
+    ['生命上限', '最大生命'],
+    ['能量护盾上限', '最大能量护盾'],
+    ['魔力上限', '最大魔力'],
+    ['冰霜', '冰冷'],
+  ];
+  function cnsTerms(s) {
+    let out = s;
+    for (const [a, b] of CNS_TERMS) out = out.split(a).join(b);
+    return out;
+  }
+  /* 一句话的几种可能写法：
+   *   「能量护盾提高 34%」（国服）＝「增加 34% 能量护盾」（繁中）
+   *   「冰霜抗性 +29%」（国服）   ＝「+29% 冰冷抗性」（繁中）
+   *   「+37 生命上限」            ＝「+37 最大生命」（只换词） */
+  function variants(line) {
+    const raw = squash(line);
+    const forms = [raw];
+    const verb = /^(.+?)(提高|提升)([+-]?\d+(?:\.\d+)?%?)$/.exec(raw);
+    if (verb) forms.push('增加' + verb[3] + verb[1]);
+    const tail = /^([^\d+\-].*?)([+-]\d+(?:\.\d+)?%?)$/.exec(raw);
+    if (tail) forms.push(tail[2] + tail[1]);
+    const out = [];
+    for (const f of forms) { out.push(f); out.push(cnsTerms(f)); }
+    return [...new Set(out)];
+  }
+
+  /* 混搭词缀在游戏里占两三行，每一行都要先各自改写成几种可能写法，再拼起来比模板 */
+  function spanVariants(part) {
+    let combos = [''];
+    for (const x of part) {
+      const forms = variants(x.text);
+      const next = [];
+      for (const c of combos) for (const v of forms) { next.push(c + v); if (next.length >= 24) break; }
+      combos = next;
+    }
+    return combos;
+  }
 
   /* 候选行：这个底子的前后缀（含只靠精华 / 合金出现的零权重行）+ 亵渎专属 */
   function candidateRows(base) {
@@ -57,29 +134,69 @@
     const rest = R.data.rows.filter((r) => r.pool === pool && !live.has(r));
     return { live: [...live], rest };
   }
-  function matchLine(text, rows) {
+  /* texts 是一行（或混搭词缀的几行拼起来）的几种可能写法，已经过 squash() */
+  function matchLine(texts, rows) {
+    const list = Array.isArray(texts) ? texts : [String(texts)];
     const conv = t2s();
     let best = null;
     for (const row of rows) {
       const zht = R.rowTemplate(row, 'zht');
       for (const tpl of [R.rowTemplate(row, 'en'), zht, conv(zht)]) {
-        const { re, order } = templateRegex(clean(tpl.replace(/\n/g, ' ')));
-        const m = re.exec(text);
-        if (!m) continue;
-        const values = row.v.map(() => null);
-        order.forEach((idx, k) => { values[idx] = Number(m[k + 1]); });
-        const inRange = row.v.every((x, i) => values[i] == null || (values[i] >= Math.min(x[0], x[1]) - 1e-9 && values[i] <= Math.max(x[0], x[1]) + 1e-9));
-        if (inRange) return { row, values: values.map((v, i) => (v == null ? row.v[i][0] : v)), exact: true };
-        if (!best) best = { row, values: values.map((v, i) => (v == null ? row.v[i][0] : v)), exact: false };
-        break;
+        const { re, order } = templateRegex(tpl);
+        for (const text of list) {
+          const m = re.exec(text);
+          if (!m) continue;
+          const values = row.v.map((v) => v[0]);
+          order.forEach((idx, k) => { values[idx] = Number(m[k + 1]); });
+          const inRange = values.every((v, i) => v >= Math.min(row.v[i][0], row.v[i][1]) - 1e-9 && v <= Math.max(row.v[i][0], row.v[i][1]) + 1e-9);
+          if (inRange) return { row, values, exact: true };
+          if (!best) best = { row, values, exact: false };
+        }
       }
     }
     return best;
   }
 
+  function parseHeader(line) {
+    const body = line.replace(/^\{/, '').replace(/\}$/, '');
+    const gen = /前綴|前缀|prefix/i.test(body) ? 'p' : /後綴|后缀|suffix/i.test(body) ? 's' : null;
+    const t = /(?:等階|等阶|層級|层级|tier)\s*[:：]?\s*(\d+)/i.exec(body);
+    return { gen, tier: t ? Number(t[1]) : null };
+  }
+
+  /* 遣词一个都不认识时的兜底：等阶 + 数值区间 + 数值个数，去这个底子的能出行里反查。
+   * 前后缀也来自表头，所以不依赖任何语言。只有唯一命中才认，宁可标未识别也不乱猜。 */
+  function matchByShape(base, part, cand, fams) {
+    const hdr = part[0].hdr;
+    if (!hdr || hdr.tier == null) return null;
+    const ranges = [];
+    for (const x of part) for (const r of x.ranges) ranges.push(r);
+    if (!ranges.length) return null;
+    const nums = [];
+    const re = new RegExp(NUM, 'g');
+    for (const x of part) for (const m of x.text.match(re) || []) nums.push(Number(m));
+    if (nums.length !== ranges.length) return null;
+    const hit = cand.live.filter((r) => (hdr.gen ? r.gen === hdr.gen : true)
+      && r.v.length === ranges.length
+      && R.tierOf(base, r) === hdr.tier
+      && r.v.every((v, i) => v[0] === ranges[i][0] && v[1] === ranges[i][1])
+      && !r.fam.some((f) => fams.has(f)));
+    return hit.length === 1 ? { row: hit[0], values: nums.slice(), exact: true } : null;
+  }
+
+  /* 国服译名和繁中不是逐字对应，这张表只能用真实文本一条条核对。加一行就少一次询问。 */
+  const BASE_ALIAS = {
+    '邪恶束衣': 'FourBodyInt3Endgame',   // 国服 Vile Robe；繁中「惡毒長袍」
+  };
+
   function findBase(nameLines) {
     const conv = t2s();
     const hay = nameLines.join(' | ');
+    for (const name in BASE_ALIAS) {
+      if (hay.indexOf(name) === -1) continue;
+      const hit = R.base(BASE_ALIAS[name]);
+      if (hit) return hit;
+    }
     let hit = null;
     for (const b of R.data.bases) {
       for (const n of [b.name, b.zh, b.zh ? conv(b.zh) : null]) {
@@ -89,7 +206,63 @@
     return hit ? hit.base : null;
   }
 
-  function parse(text) {
+  /* 底子名认不出时：用「需求等级 + 插槽数 + 力量/敏捷/智慧 + 防御类型」缩小范围，给界面一张候选清单。
+   * 插槽数和防御行与语言无关，是这里最靠得住的线索；属性需求只会被「属性需求降低」改小，所以按上限筛。 */
+  function guessBases(all) {
+    let level = null;
+    let sockets = null;
+    const defs = new Set();
+    const attrs = { str: false, dex: false, int: false };
+    const nums = [];
+    let sawReq = false;
+    for (const l of all) {
+      const sock = SOCKETS.exec(l);
+      if (sock) sockets = (sock[1].match(/[A-Za-z]/g) || []).length;
+      if (DEF_LINE.test(l)) {
+        const label = l.split(/[:：]/)[0];
+        for (const [re, key] of DEF_KEY) if (re.test(label)) defs.add(key);
+      }
+      if (REQ_LINE.test(l)) {
+        sawReq = true;
+        if (level == null) {
+          const m = /(?:等级|等級|Level)\s*[:：]?\s*(\d+)/i.exec(l);
+          if (m) level = Number(m[1]);
+        }
+        for (const m of l.match(/\d+/g) || []) nums.push(Number(m));
+        if (/力量|\bStr\b/i.test(l)) attrs.str = true;
+        if (/敏捷|\bDex\b/i.test(l)) attrs.dex = true;
+        if (/智慧|\bInt\b/i.test(l)) attrs.int = true;
+      }
+    }
+    if (level == null) return { candidates: [] };
+    /* 需求行里除等级外的数字就是属性需求（可能被「属性需求降低」改小过，所以只当上限用） */
+    const attrNums = nums.filter((n) => n !== level);
+    const lo = attrNums.length ? Math.min.apply(null, attrNums) : 0;
+    let list = R.data.bases.filter((b) => {
+      if (b.req.lvl !== level) return false;
+      if (sockets) { if (R.socketCap(b) !== sockets) return false; }
+      if (defs.size) {
+        const d = b.def || {};
+        const keys = ['ar', 'ev', 'es'].filter((k) => d[k] > 0);
+        if (keys.length !== defs.size || !keys.every((k) => defs.has(k))) return false;
+      }
+      if (sawReq) {
+        if ((b.req.str > 0) !== attrs.str || (b.req.dex > 0) !== attrs.dex || (b.req.int > 0) !== attrs.int) return false;
+      }
+      if (lo) {
+        const vals = [b.req.str, b.req.dex, b.req.int].filter((v) => v > 0);
+        if (!vals.length || vals.some((v) => v < lo || v > lo * 2)) return false;
+      }
+      return true;
+    });
+    /* 符锻 / 符匠变体是联盟专属的特殊底子，常规底子能对上的话就不拿它们烦玩家 */
+    const normal = list.filter((b) => !/Verisium/.test(b.id));
+    const pick = (normal.length ? normal : list).slice(0, 8);
+    return { level, defs: [...defs], candidates: pick.map((b) => ({ id: b.id, name: b.name, zh: b.zh, def: b.def || {}, req: b.req })) };
+  }
+
+  function parse(text, opts) {
+    const o = opts || {};
     const lines = String(text || '').replace(/\r/g, '').split('\n').map((l) => l.trim());
     const blocks = [[]];
     for (const l of lines) { if (SEP.test(l)) blocks.push([]); else if (l) blocks[blocks.length - 1].push(l); }
@@ -99,9 +272,16 @@
     let rarity = null;
     for (const l of all) for (const [re, r] of RARITY) if (re.test(l)) rarity = r;
     if (rarity === 'unique') return { error: '这是一件传奇物品，传奇不能用通货改词缀。' };
-    const head = blocks[0].filter((l) => !/^(?:Item Class|物品種類|物品类别|物品類別|Rarity|稀有度)\s*[:：]/i.test(l));
-    const base = findBase(head.length ? head : all.slice(0, 4));
-    if (!base) return { error: '没认出这是什么底子。可以改用下面的「从白底开始」手动选。' };
+    const head = blocks[0].filter((l) => !TOP.test(l));
+    const base = (o.base && R.base(o.base)) || findBase(head.length ? head : all.slice(0, 4));
+    if (!base) {
+      const guess = guessBases(all);
+      if (!guess.candidates.length) return { error: '没认出这是什么底子。可以改用下面的「从白底开始」手动选。' };
+      return {
+        error: '没认出底子的名字：国服译名和繁中不一样，我们的底子表里只有繁中名。点下面一个候选，词缀会接着认。',
+        needBase: guess,
+      };
+    }
 
     const item = R.newItem(base.id, {});
     const warnings = [];
@@ -115,16 +295,21 @@
     }
     if (!ilvlSeen) warnings.push('文本里没有物品等级，先按 ' + item.ilvl + ' 处理，请核对。');
 
-    /* 词缀在「物品等级」那一块之后 */
+    /* 词缀在「物品等级」那一块之后。{} 表头只作用于紧接着的一条词缀（混搭词缀会占两三行） */
     const startAt = blocks.findIndex((b) => b.some((l) => ILVL.test(l)));
     const modLines = [];
+    let hdr = null;
     blocks.slice(startAt < 0 ? 1 : startAt + 1).forEach((b) => {
       for (const raw of b) {
-        if (CORRUPTED.test(raw) || PROPERTY.test(raw) || /^\{.*\}$/.test(raw)) continue;
+        if (CORRUPTED.test(raw)) continue;
+        if (HEADER.test(raw)) { hdr = parseHeader(raw); continue; }
+        if (PROPERTY.test(raw)) continue;
         let textLine = raw;
         const marks = {};
         for (const [re, key] of MARKS) if (re.test(textLine)) { marks[key] = true; textLine = textLine.replace(re, ''); }
-        modLines.push({ text: clean(textLine), marks });
+        const parted = stripRanges(textLine);
+        modLines.push({ text: clean(parted.text), ranges: parted.ranges, marks, hdr, raw });
+        hdr = null;
       }
     });
 
@@ -133,7 +318,7 @@
     const used = new Set();
     const fams = new Set();
     const affixes = [];
-    const tryMatch = (textLine) => matchLine(textLine, cand.live) || matchLine(textLine, cand.rest);
+    const unmatched = [];
     for (let i = 0; i < explicit.length; i++) {
       if (used.has(i)) continue;
       const l = explicit[i];
@@ -146,33 +331,49 @@
       let span = 1;
       for (const n of [3, 2, 1]) {
         if (i + n > explicit.length) continue;
-        const joined = explicit.slice(i, i + n).map((x) => x.text).join(' ');
-        const m = tryMatch(joined);
+        const part = explicit.slice(i, i + n);
+        const forms = spanVariants(part);
+        let m = matchLine(forms, cand.live) || matchLine(forms, cand.rest);
+        if (!m || m.row.fam.some((f) => fams.has(f))) m = matchByShape(base, part, cand, fams);
         if (m && (m.exact || n === 1) && !m.row.fam.some((f) => fams.has(f))) { hit = m; span = n; break; }
       }
       for (let k = 0; k < span; k++) used.add(i + k);
-      if (!hit) { affixes.push({ row: null, type: 'unknown', fam: [], gen: null, lvl: 1, tags: [], values: [], text: l.text, unknown: true }); continue; }
+      if (!hit) { unmatched.push(l.text); continue; }
       hit.row.fam.forEach((f) => fams.add(f));
       const marks = explicit.slice(i, i + span).reduce((o, x) => Object.assign(o, x.marks), {});
       affixes.push(Object.assign(R.makeAffix(hit.row, () => 0), { values: hit.values },
         marks.fractured ? { fractured: true } : null, marks.desecrated || hit.row.pool === 'x' ? { desecrated: true } : null));
     }
 
-    /* 没认出前后缀的词缀（未识别 / 未揭露）：放到还有空位的一侧 */
-    const count = { p: affixes.filter((a) => a.gen === 'p').length, s: affixes.filter((a) => a.gen === 's').length };
-    for (const a of affixes) if (!a.gen) { a.gen = count.p <= count.s ? 'p' : 's'; count[a.gen]++; }
-    const unknown = affixes.filter((a) => a.unknown).length;
-    if (unknown) warnings.push('有 ' + unknown + ' 条词缀没认出来，已按原文保留；它们算作「没用的词缀」，前后缀是猜的。');
-
+    /* 稀有度先定下来：前后缀上限是按稀有度算的，认不出的行还得分到两边去 */
     item.affixes = affixes;
     item.rarity = rarity || (affixes.length > 2 ? 'rare' : affixes.length ? 'magic' : 'normal');
-    if (item.rarity === 'normal' && affixes.length) item.rarity = affixes.length > 2 ? 'rare' : 'magic';
+
+    /* 认不出的行：还有空位才算「没用的词缀」，两侧都满了就只能是说明行（比如国服多出来的一行） */
     const cap = R.caps(item);
-    if (count.p > cap.p || count.s > cap.s) warnings.push('识别出的前后缀数量超过了上限，请对照游戏检查。');
-    return { item, base, warnings };
+    const free = () => {
+      const p = cap.p - affixes.filter((a) => a.gen === 'p').length;
+      const s = cap.s - affixes.filter((a) => a.gen === 's').length;
+      return { p, s };
+    };
+    const extras = [];
+    for (const text of unmatched) {
+      const f = free();
+      const gen = f.p >= f.s ? 'p' : 's';
+      if (f[gen] <= 0) { extras.push(text); continue; }
+      affixes.push({ row: null, type: 'unknown', fam: [], gen, lvl: 1, tags: [], values: [], text, unknown: true });
+    }
+    const unknown = affixes.filter((a) => a.unknown).length;
+    if (unknown) warnings.push('有 ' + unknown + ' 条词缀没认出来，已按原文保留；它们算作「没用的词缀」，前后缀是猜的。');
+    if (extras.length) warnings.push('有 ' + extras.length + ' 行不是词缀，已忽略：' + extras.join('、'));
+
+    if (!rarity) item.rarity = affixes.length > 2 ? 'rare' : affixes.length ? 'magic' : 'normal';
+    const f = free();
+    if (f.p < 0 || f.s < 0) warnings.push('识别出的前后缀数量超过了上限，请对照游戏检查。');
+    return { item, base, warnings, extras };
   }
 
-  const api = { parse, matchLine };
+  const api = { parse, matchLine, variants, squash };
   global.CraftItemText = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

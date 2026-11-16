@@ -228,18 +228,24 @@
   }
 
   /* ------------------------------------------------------------------ 物品卡 */
-  function tierBadge(item, a) {
+  function tierOfAffix(item, a) {
     const row = a.row && R.row(a.row);
-    const t = row ? R.tierOf(R.baseOf(item), row) : null;
+    return row ? R.tierOf(R.baseOf(item), row) : null;
+  }
+  function tierBadge(item, a) {
+    const t = tierOfAffix(item, a);
     return t ? '<span class="tag">T' + t + '</span>' : '';
   }
   function modRow(item, a, i, opts) {
     opts = opts || {};
     const hit = state.targets.some((t) => R.targetAccepts(R.baseOf(item), t, a));
+    const tier = tierOfAffix(item, a);
     const cls = ['mod', hit ? 'hit' : '', a.fractured ? 'frac' : '', a.desecrated ? 'des' : '', a.unknown ? 'unk' : '', opts.pick ? 'pick' : ''].join(' ');
     const meta = tierBadge(item, a)
       + (a.fractured ? '<span class="tag frac">破裂</span>' : '') + (a.desecrated ? '<span class="tag des">亵渎</span>' : '')
       + (a.essence ? '<span class="tag">精华</span>' : '') + (hit ? '<span class="tag hit">目标</span>' : '')
+      + (!hit && opts.copy && tier
+        ? '<button class="ghost small" data-act="copy-mod" data-i="' + i + '" type="button" title="把这条词缀设成目标（按它现在的档位）">复制</button>' : '')
       + (opts.remove ? '<span class="tag bad">移除</span>' : '');
     const tag = opts.pick || opts.remove ? 'button type="button" data-act="' + (opts.pick || 'edit-remove') + '" data-i="' + i + '"' : 'div';
     return '<' + tag + ' class="' + cls + '"><span class="mod-text">' + esc(affixText(a)) + '</span><span class="mod-meta">' + meta + '</span></' + tag.split(' ')[0] + '>';
@@ -249,10 +255,15 @@
     if (!item) return '<div class="item normal"><div class="item-empty">还没有装备<br><span class="small">先在右边粘贴或选一个底子</span></div></div>';
     const base = R.baseOf(item);
     const cap = R.caps(item, item.rarity === 'normal' ? 'rare' : item.rarity);
+    const rowOpts = (a) => {
+      if (opts.filter && opts.filter(a)) return { pick: opts.pick };
+      if (ui.edit && !opts.pick) return { remove: true };
+      return opts.copy ? { copy: true } : null;
+    };
     const group = (g) => {
       const list = item.affixes.map((a, i) => [a, i]).filter(([a]) => a.gen === g);
       if (!list.length) return '';
-      return '<div class="mod-side ' + g + '"><span>' + sideName(g) + '</span></div>' + list.map(([a, i]) => modRow(item, a, i, opts.filter && opts.filter(a) ? { pick: opts.pick } : (ui.edit && !opts.pick ? { remove: true } : null))).join('');
+      return '<div class="mod-side ' + g + '"><span>' + sideName(g) + '</span></div>' + list.map(([a, i]) => modRow(item, a, i, rowOpts(a))).join('');
     };
     const imp = (base.imp || []).map((x) => esc(tx(R.fill(state.lang !== 'en' && x.zh ? x.zh : x.tpl, x.v.map((v) => (v[0] === v[1] ? v[0] : v[0] + '–' + v[1])))))).join('<br>');
     const rar = { normal: '普通', magic: '魔法', rare: '稀有' }[item.rarity];
@@ -265,7 +276,8 @@
   }
   function renderSide() {
     const item = state.item;
-    let html = itemCard(item);
+    /* 选目标那一步：装备卡上每条词缀多一个「复制」，一下就把这条加进右边的目标 */
+    let html = itemCard(item, state.step === 'targets' ? { copy: true } : null);
     if (item) {
       html += '<div class="row">'
         + '<button class="ghost" data-act="toggle-paste" type="button">粘贴更新</button>'
@@ -309,7 +321,8 @@
     return '<div class="stack"><div class="eyebrow">第 1 步</div><h1 class="title">你手上是什么装备？</h1>'
       + '<p class="lede">在游戏里把鼠标放到装备上，按 <b>Ctrl+C</b>，再粘贴到下面。词缀、档位、物品等级都会自动认出来。</p></div>'
       + '<div class="panel stack"><textarea class="field" id="pasteBox" placeholder="把物品文本粘贴到这里（支持简体、繁體、English）"></textarea>'
-      + '<div class="row"><button class="btn primary" data-act="paste-parse" type="button">识别这件装备</button><span class="small faint" id="pasteMsg"></span></div></div>'
+      + '<div class="row"><button class="btn primary" data-act="paste-parse" type="button">识别这件装备</button><span class="small faint" id="pasteMsg"></span></div>'
+      + '<div id="pastePick" class="stack"></div></div>'
       + '<div class="stack"><h2 class="h2">或者，从一个白底开始</h2>'
       + '<div class="chips">' + SLOTS.map(([id, n]) => '<button class="chip ' + (state.slot === id && !state.q ? 'on' : '') + '" data-act="slot" data-v="' + id + '" type="button">' + n + '</button>').join('') + '</div>'
       + (state.slot === 'weapon' && !state.q ? '<div class="chips">' + WCLS.map(([id, n]) => '<button class="chip ' + (state.wcls === id ? 'on' : '') + '" data-act="wcls" data-v="' + id + '" type="button">' + n + '</button>').join('') + '</div>' : '')
@@ -487,7 +500,8 @@
   function pastePanel() {
     return '<div class="next"><div class="next-title">粘贴<em>现在的装备</em></div><p class="next-how">在游戏里对着装备按 Ctrl+C，粘贴到这里。目标保持不变。</p>'
       + '<textarea class="field" id="pasteBox" placeholder="物品文本"></textarea><div class="row"><button class="btn primary" data-act="paste-parse" type="button">更新装备</button>'
-      + '<button class="btn" data-act="toggle-paste" type="button">取消</button><span class="small faint" id="pasteMsg"></span></div></div>';
+      + '<button class="btn" data-act="toggle-paste" type="button">取消</button><span class="small faint" id="pasteMsg"></span></div>'
+      + '<div id="pastePick" class="stack"></div></div>';
   }
 
   /* ------------------------------------------------------------------ 回报结果
@@ -631,10 +645,48 @@
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  function parsePaste() {
+  /* 第 2 步：装备上的一条词缀直接变成目标，档位就是它现在的档位（意思是「这条不许掉」）。
+   * 词缀是简体、目标列表也是同一套名字，所以只复制类型 + 档位，不复制数值。 */
+  function copyToTarget(i) {
+    const item = state.item;
+    const a = item && item.affixes[i];
+    const row = a && a.row ? R.row(a.row) : null;
+    if (!row) return toast('这条词缀没认出来，没法设成目标。');
+    if (state.targets.some((t) => (t.row ? t.row === row.id : t.type === a.type && t.pool === row.pool))) {
+      return toast('「' + shortName(rowText(row)) + '」已经是目标了。');
+    }
+    const base = R.baseOf(item);
+    const tier = R.tierOf(base, row);
+    if (!tier) return toast('这条词缀只有精华才会出，暂时不能设成目标。');
+    const cap = R.caps(item);
+    const used = state.targets.filter((t) => targetGen(base, t) === row.gen).length;
+    if (used >= cap[row.gen]) {
+      return toast('这一侧已经有 ' + cap[row.gen] + ' 条目标了，先去掉一条再加。');
+    }
+    const target = { type: a.type, pool: row.pool, tier, name: shortName(rowText(R.ladder(base, a.type, row.pool)[0])) };
+    state.targets.push(target);
+    save(); replan(); render();
+    toast('已加进目标：' + target.name + '（T' + tier + ' 以上）');
+  }
+  /* 国服的底子名和繁中不一样，对不上时解析会带回一张候选清单，让玩家点一下接着认 */
+  function baseCandidates(g) {
+    const label = { ar: '护甲', ev: '闪避', es: '能量护盾' };
+    const hint = (g.defs || []).map((k) => label[k]).filter(Boolean);
+    return '<p class="small muted" style="margin:0">需求等级 ' + g.level + (hint.length ? ' · ' + hint.join(' / ') : '') + '，对得上的是这几个：</p>'
+      + '<div class="row">' + g.candidates.map((b) => '<button class="btn" data-act="paste-pick" data-v="' + esc(b.id) + '" type="button">'
+        + esc(baseName(b)) + ' <span class="faint small">' + esc(b.name) + '</span>'
+        + (baseStat(b) ? '<span class="small faint">' + esc(baseStat(b)) + '</span>' : '') + '</button>').join('') + '</div>';
+  }
+  function parsePaste(opts) {
     const box = $('pasteBox');
-    const res = P.parse(box ? box.value : '');
-    if (res.error) { const m = $('pasteMsg'); if (m) m.textContent = res.error; return; }
+    const res = P.parse(box ? box.value : '', opts);
+    const pick = $('pastePick');
+    if (res.error) {
+      const m = $('pasteMsg'); if (m) m.textContent = res.error;
+      if (pick) pick.innerHTML = res.needBase ? baseCandidates(res.needBase) : '';
+      return;
+    }
+    if (pick) pick.innerHTML = '';
     ui.paste = false;
     setItem(res.item, '粘贴了装备：' + baseName(res.base));
     if (res.warnings.length) toast(res.warnings[0]);
@@ -701,6 +753,7 @@
     'more-bases': () => { ui.more += 60; render(); },
     'pick-base': (v) => { setItem(R.newItem(v, { ilvl: state.ilvl }), '选了白底：' + baseName(R.base(v))); state.history = []; go('targets'); },
     'paste-parse': () => parsePaste(),
+    'paste-pick': (v) => parsePaste({ base: v }),
     'toggle-paste': () => { ui.paste = !ui.paste; ui.report = null; if (state.step !== 'craft') go('item'); else render(); },
     'toggle-edit': () => { ui.edit = !ui.edit; render(); },
     'edit-remove': (v, el) => { const it = R.clone(state.item); const a = it.affixes.splice(Number(el.dataset.i), 1)[0]; if (!it.affixes.length) it.rarity = 'normal'; commit(it, '手动移除「' + affixText(a) + '」'); render(); },
@@ -719,6 +772,7 @@
       save(); replan(); render();
     },
     'del-target': (v, el) => { state.targets.splice(Number(el.dataset.i), 1); save(); replan(); render(); },
+    'copy-mod': (v, el) => copyToTarget(Number(el.dataset.i)),
     tier: (v, el) => {
       const t = state.targets[Number(el.dataset.i)];
       const n = R.ladder(R.baseOf(state.item), t.type, t.pool).length;
