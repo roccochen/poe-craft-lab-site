@@ -1,262 +1,42 @@
-<!DOCTYPE html>
-<html lang="zh-CN" data-type="software" data-radius="soft" data-buttons="solid">
+<!doctype html>
+<html lang="zh-CN" data-theme="ink">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>流放做装台 · 流放之路 2 装备制作助手</title>
-  <meta name="description" content="流放之路 2 装备制作辅助工具：选择底子与目标词缀，模拟每一步做装结果并动态推荐后续策略。（流放 1 入口已关闭）">
-  <meta name="page-type" content="software">
-  <meta name="site-kind" content="gaming">
-  <meta name="theme-color" content="#070a0f">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="流放做装台 · 流放之路 2 装备制作助手">
-  <meta property="og:description" content="选底子、定目标，模拟每一步做装结果并推荐下一步；可撤销、可导出，离线可用。">
-  <meta property="og:image" content="screenshots/preview-poe2.png">
-  <meta name="twitter:card" content="summary_large_image">
+  <title>流放做装台 · 流放之路 2 做装指引</title>
+  <meta name="description" content="告诉它你的装备和想要的词缀，它一步一步告诉你在游戏里该用什么。">
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-  <link rel="stylesheet" href="assets/styles.css">
-  <link rel="stylesheet" href="assets/ux.css">
-  <link rel="stylesheet" href="assets/mobile-next.css">
-  <link rel="stylesheet" href="assets/workspace.css">
-  <link rel="stylesheet" href="assets/art.css">
+  <link rel="stylesheet" href="assets/craft.css">
 </head>
 <body>
-  <a class="skip-link" href="#main-content">跳到主内容 · Skip to content</a>
-  <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <div class="sigil" aria-hidden="true"><span>流</span></div>
-        <div class="brand-text">
-          <h1>流放做装台</h1>
-          <p id="brand-sub">PATH OF EXILE 2 · 装备制作助手</p>
-        </div>
-      </div>
-      <nav class="game-switch" id="game-switch" aria-label="当前游戏">
-        <span class="game-label active" data-game="poe2" title="流放 1 入口已关闭，当前只提供流放 2">流放 2</span>
-      </nav>
-      <div class="topbar-meta">
-        <span class="live-dot"></span>
-        <span class="offline"><span id="runtime-mode">本地运行</span> · 数据 v<span id="data-version">1.0.0</span></span>
-        <span class="config-badge" id="config-badge" title="当前使用的数据配置">内置配置</span>
-      </div>
-      <div class="top-actions">
-        <!-- 低频动作收进一个菜单：顶栏只留品牌、游戏、状态和一个入口 -->
-        <details class="more-menu" id="more-menu">
-          <summary class="btn ghost" title="方案与数据">方案与数据</summary>
-          <div class="more-list" role="menu">
-            <button class="btn ghost" id="btn-manual" type="button" role="menuitem" title="把游戏里已经做出来的装备录入进来">录入装备</button>
-            <button class="btn ghost" id="btn-export" type="button" role="menuitem" title="把当前方案保存成 JSON">保存方案</button>
-            <button class="btn ghost" id="btn-import" type="button" role="menuitem" title="载入之前保存的方案">载入方案</button>
-            <button class="btn ghost" id="btn-settings" type="button" role="menuitem" title="查看价格数据与拉取状态">价格数据</button>
-            <button class="btn ghost danger restart-btn" id="btn-restart" type="button" role="menuitem" title="清空当前底子、目标、制作记录和花费，从零开始（不可撤销）">清空重开</button>
-          </div>
-        </details>
-        <input type="file" id="file-import" accept="application/json,.json" hidden>
-      </div>
-    </header>
+  <header class="top">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">流放做装台</span>
+      <span class="brand-sub" id="brandSub">流放之路 2</span>
+    </a>
+    <nav class="steps" id="steps" aria-label="步骤"></nav>
+    <div class="tools">
+      <button class="ghost" data-act="clear-all" type="button" title="清空装备和目标，从头开始（可以撤销）">全部清空</button>
+      <button class="ghost" data-act="open-settings" type="button">设置</button>
+    </div>
+  </header>
+  <main class="layout">
+    <aside class="side" id="side" aria-label="我的装备"></aside>
+    <section class="stage" id="stage" aria-live="polite"></section>
+  </main>
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <aside class="sheet" id="sheet" hidden aria-label="设置"></aside>
+  <div class="toast" id="toast" role="status" hidden></div>
 
-    <!-- 导航只留左栏一套；这条只回答「现在该干什么」，带一个前进按钮 -->
-    <section class="nextbar" id="journey" aria-label="下一步">
-      <span class="nextbar-tag">下一步</span>
-      <b id="journey-next">先选槽位和底子</b>
-      <button class="btn tiny nextbar-go" id="journey-go" type="button" hidden>前往 →</button>
-      <button class="btn tiny ghost nextbar-guide" id="journey-guide" type="button">3 分钟指南</button>
-    </section>
-
-    <main class="workspace" id="main-content" tabindex="-1">
-      <nav class="rail" id="workspace-rail" aria-label="工作台">
-        <button type="button" data-view="gear" class="rail-btn"><span class="rail-ico">01</span><b>装备</b><small>选底子</small></button>
-        <button type="button" data-view="targets" class="rail-btn"><span class="rail-ico">02</span><b>目标</b><small>词缀</small></button>
-        <button type="button" data-view="craft" class="rail-btn active"><span class="rail-ico">03</span><b>做装</b><small>用通货</small></button>
-        <button type="button" data-view="log" class="rail-btn"><span class="rail-ico">04</span><b>记录</b><small>历史</small></button>
-      </nav>
-
-      <section class="stage" id="stage">
-        <div class="item-strip">
-          <section class="item-panel">
-            <div class="item-toolbar">
-              <div class="toolbar-left">
-                <span class="rarity-label" id="rarity-label">普通物品</span>
-                <span class="toolbar-sep"></span>
-                <span class="toolbar-meta" id="item-meta">物品等级 86</span>
-              </div>
-              <div class="toolbar-actions">
-                <label class="ilvl-field">物品等级
-                  <input id="ilvl-input" type="number" min="1" max="100" step="1" value="86">
-                </label>
-                <button class="btn tiny ghost" id="btn-undo" type="button" title="撤销上一步 (Ctrl+Z)">撤销</button>
-                <button class="btn tiny ghost" id="btn-reset" type="button">重置物品</button>
-                <button class="btn tiny ghost" id="btn-fractured" type="button" title="生成一件带 1 条破裂词缀的稀有底子">破裂底子</button>
-                <button class="btn tiny ghost" id="btn-copy" type="button">复制文本</button>
-              </div>
-            </div>
-            <div class="influence-row" id="influence-row"></div>
-            <div class="item-card" id="item-card"></div>
-            <div class="item-stats" id="item-stats"></div>
-          </section>
-
-          <aside class="target-summary" id="target-summary" data-open-view="targets" role="button" tabindex="0" aria-label="查看目标词缀">
-            <div class="target-summary-head">
-              <div><span class="eyebrow">TARGET</span><b>目标装备</b></div>
-              <button class="btn tiny ghost" type="button" data-open-view="targets">设置</button>
-            </div>
-            <div class="target-summary-progress"><b id="target-summary-count">0 / 0</b><span>离目标还差多少</span></div>
-            <div class="target-summary-bar"><i id="target-summary-fill"></i></div>
-            <ul class="target-summary-list" id="target-summary-list"></ul>
-            <p class="target-summary-empty" id="target-summary-empty">还没有目标。先选 2–3 条最想要的词缀。</p>
-            <p class="target-summary-hint">点击这里设置目标 →</p>
-          </aside>
-        </div>
-
-        <section class="tool-banner" id="tool-banner" hidden></section>
-        <section class="result-prompt" id="result-prompt" aria-label="这一步结果确认" aria-live="polite" hidden></section>
-        <section class="mobile-next" id="mobile-next" hidden></section>
-
-        <section class="view" data-view-panel="gear" id="view-gear" hidden>
-          <section class="block collapsible" id="step-base">
-            <div class="block-head">
-              <h2><span class="step-no">01</span>选择底子 <span class="help-dot" tabindex="0" title="底子就是你要做的装备类型。先选槽位，再点具体底子。" aria-label="底子说明">?</span></h2>
-              <span class="block-hint" id="base-count"></span>
-              <button class="collapse-toggle" type="button" data-collapse="base" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
-            </div>
-            <div class="section-body">
-              <p class="block-desc">先决定做什么装备。不用懂词缀，选一个底子就行。</p>
-              <div class="tabs slot-tabs" id="slot-tabs" role="tablist"></div>
-              <div class="tabs weapon-tabs" id="weapon-tabs" role="tablist" aria-label="武器类型" hidden></div>
-              <label class="field-label" for="base-search">搜索底子</label>
-              <div class="field search-field">
-                <span class="field-icon" aria-hidden="true">⌕</span>
-                <input id="base-search" type="search" placeholder="输入名称或英文名" autocomplete="off">
-              </div>
-              <div class="base-list" id="base-list"></div>
-            </div>
-          </section>
-
-
-        </section>
-
-        <section class="view" data-view-panel="targets" id="view-targets" hidden>
-          <div class="view-head">
-            <div><span class="eyebrow">STEP 02</span><h2>设置目标词缀</h2><p>挑 2–3 条最想要的属性；T1 最好，T4 较低。</p></div>
-            <span class="view-badge" id="target-count">0 / 6</span>
-          </div>
-          <section class="block collapsible" id="step-targets">
-            <div class="block-head">
-              <h2>目标词缀 <span class="help-dot" tabindex="0" title="目标词缀 = 你希望最后装备上出现的属性。T1 最好，T4 较低。" aria-label="目标词缀说明">?</span></h2>
-              <button class="collapse-toggle" type="button" data-collapse="targets" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
-            </div>
-            <div class="section-body">
-              
-              <div class="target-list" id="target-list"></div>
-              <div class="target-builder">
-                <div class="builder-head">
-                  <span class="mini-title">添加词缀</span>
-                  <div class="tabs tiny" id="target-side-tabs"></div>
-                </div>
-                <label class="field-label" for="target-search">搜索词缀</label>
-                <div class="field search-field compact">
-                  <span class="field-icon" aria-hidden="true">⌕</span>
-                  <input id="target-search" type="search" placeholder="输入词缀或标签" autocomplete="off">
-                </div>
-                <div class="target-pool" id="target-pool"></div>
-              </div>
-            </div>
-          </section>
-        </section>
-
-        <section class="view" data-view-panel="craft" id="view-craft" hidden>
-          <div class="view-head">
-            <div><span class="eyebrow">STEP 03</span><h2>使用通货做装</h2></div>
-          </div>
-          <section class="action-panel panel-flat collapsible" id="step-craft">
-            <div class="panel-head">
-              <div>
-                <h2>选择通货 / 工艺 <span class="help-dot" tabindex="0" title="选中通货后再点击上方装备使用；不可用条件会直接写在卡片上。" aria-label="做装操作说明">?</span></h2>
-                <p id="action-hint">选中通货，再点上方装备使用；也可以直接按右侧推荐。</p>
-                <div class="action-state" id="action-state"></div>
-              </div>
-              <div class="panel-head-actions">
-                <button class="collapse-toggle" type="button" data-collapse="actions" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
-                <button class="btn gold" id="btn-auto" type="button" title="模拟连续推演，不逐步确认结果；真实做装请手动执行每一步。最多 30 步 / 1500c">连续执行</button>
-              </div>
-            </div>
-            <div class="section-body">
-              <div class="tabs action-tabs" id="action-tabs" role="tablist"></div>
-              <div class="action-body" id="action-body"></div>
-            </div>
-          </section>
-        </section>
-
-        <section class="view" data-view-panel="log" id="view-log" hidden>
-          <div class="view-head">
-            <div><span class="eyebrow">STEP 04</span><h2>制作记录</h2><p>每一步的词缀变化、目标和花费都会记录。</p></div>
-          </div>
-          <section class="log-panel panel-flat collapsible">
-            <div class="panel-head">
-              <div>
-                <h2>历史步骤 <span class="help-dot" tabindex="0" title="每一步都会记录。做错了可以点撤销，不会丢档。" aria-label="制作记录说明">?</span></h2>
-              </div>
-              <div class="log-stats">
-                <span>花费 <b id="spent-total">0c</b></span>
-                <span>操作 <b id="attempt-total">0</b></span>
-                <button class="collapse-toggle" type="button" data-collapse="log" aria-expanded="true"><span class="collapse-label">收起</span><i aria-hidden="true">⌃</i></button>
-              </div>
-            </div>
-            <div class="section-body"><div class="craft-log" id="craft-log"></div></div>
-          </section>
-        </section>
-      </section>
-
-      <aside class="panel right-panel" id="step-finish">
-        <div class="right-stage" data-right-panel="gear" id="right-gear" hidden></div>
-        <div class="right-stage" data-right-panel="targets" id="right-targets" hidden></div>
-        <div class="right-stage" data-right-panel="log" id="right-log" hidden></div>
-        <div class="right-stage" data-right-panel="craft" id="right-craft">
-        <div class="advisor-head">
-          <h2>下一步怎么做 <span class="help-dot" tabindex="0" title="这里会根据当前装备和目标，估算每一步的成功率、风险和花费。新手先按首选走。" aria-label="顾问说明">?</span></h2>
-          <button class="btn tiny ghost" id="btn-analyze" type="button" title="用更多样本重新估算">重新估算</button>
-        </div>
-        <div class="diagnosis" id="diagnosis"></div>
-        <div class="plan-strip" id="plan-strip"></div>
-        <div class="budget-box" id="budget-box"></div>
-        <div class="advisor-section">
-          <div class="section-title"><h3>现在推荐这样做</h3><span class="section-note" id="plan-note">按剩余期望成本排序</span></div>
-          <div class="recommendations" id="recommendations"></div>
-        </div>
-        <!-- 次要内容默认收起：备选方案、推荐顺序、整套估算 -->
-        <details class="advisor-more" id="advisor-more">
-          <summary>其它选项 · 推荐顺序 · 保守策略估算</summary>
-          <div id="alt-recommendations"></div>
-          <div class="advisor-sub">
-            <div class="section-title"><h3>推荐顺序</h3><span class="section-note" id="plan-title">动态</span></div>
-            <div class="plan-card" id="route-plan"></div>
-            <div class="route-actions"><button class="btn ghost wide" id="btn-sim-route" type="button" title="用保守策略跑 24 次（最多 800 步 / 2500c），和求解器的期望值互相校验">跑保守策略全程模拟（约 2 秒）</button></div>
-            <div class="route-stats" id="route-stats"></div>
-          </div>
-        </details>
-        <footer class="advisor-foot">估算基于内置权重与品级分布，真实结果会有浮动；价格只影响花费排序。</footer>
-        </div>
-      </aside>
-    </main>
-  </div>
-
-  <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
-  <div class="modal-root" id="modal-root"></div>
-
-  <script src="js/runtime-config.js"></script>
-  <script src="js/data-poe2.dat-omens.js"></script>
-  <script src="js/data-poe2.dat-bases.js"></script>
-  <!-- 词缀按槽位切片：这里只装共享核心 + 默认槽位（头盔，新档模板用的就是头盔）。
-       换槽位时 app.js 再注入对应切片；data-poe2.dat-mods.js 整表只给 Node 测试用。 -->
-  <script src="js/data-poe2.dat-mods-core.js"></script>
-  <script src="js/data-poe2.dat-mods-helmet.js"></script>
-  <script src="js/data-poe2.dat-essences.js"></script>
-  <script src="js/data-poe2.js"></script>
-  <script src="js/config-poe2.js"></script>
-  <script src="js/engine-poe2.js"></script>
-  <script src="js/solver-poe2.js"></script>
-  <script src="js/advisor-poe2.js"></script>
-  <script src="js/games.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/craft/data.bases.js"></script>
+  <script src="js/craft/data.mods.js"></script>
+  <script src="js/craft/data.misc.js"></script>
+  <script src="js/craft/data.zh.js"></script>
+  <script src="js/craft/data.t2s.js"></script>
+  <script src="js/craft/rules.js"></script>
+  <script src="js/craft/solver.js"></script>
+  <script src="js/craft/itemtext.js"></script>
+  <script src="js/craft/app.js"></script>
 </body>
 </html>
