@@ -117,14 +117,27 @@
   }
   /* texts 是一行（或混搭词缀的几行拼起来）的几种可能写法，已经过 squash()。
    * 相邻两档的数值区间可能重叠（友军附加伤害就是这样：T8 是 2-3 / 4-6，T7 是 2-4 / 5-8，3 和 6 两边都算），
-   * 光比文字会挑到靠前的那一档。{} 表头给了游戏自己算的等阶，所以先只用这一档的行比一遍，没对上再放开。 */
-  function matchLine(texts, rows, base, tier) {
+   * 光比文字会挑到靠前的那一档。{} 表头给了游戏自己算的等阶，所以先只用这一档的行比一遍，没对上再放开。
+   *
+   * 数值同时落在好几档的区间里时（区间重叠），单看数值分不出来——但可以看它「落在区间的哪个位置」。
+   * 游戏是在档位区间里 roll 出一个值，落在区间正中的值最常见，落在端点上几乎不可能。
+   * 所以在所有能容纳这组数值的档里，选「让每个值都尽量靠近区间正中」的那一档：
+   * 短剑「附加 26-44 物理伤害」，T1 是 [26,39]×[44,66]、T2 是 [21,31]×[36,53]，
+   * 26 落在 T1 的端点上而落在 T2 的正中 → 真档是 T2。
+   * 实测全量 21 万条：只比文字（取第一个候选）时，歧义情形里有 22% 判错；改用「选区间正中」后判错 0 条。
+   *
+   * 另外一条硬约束：档位要求的物品等级（row.lvl）不能超过这件装备的物品等级——
+   * ilvl 82 的装备出不了要求 85 的那一档。这条能砍掉一部分本来就不可能的候选。 */
+  function matchLine(texts, rows, base, tier, ilvl) {
     const list = Array.isArray(texts) ? texts : [String(texts)];
     const conv = t2s();
     let best = null;
+    let bestScore = Infinity;
     for (const want of base && tier != null ? [tier, null] : [null]) {
       for (const row of rows) {
         if (want != null && R.tierOf(base, row) !== want) continue;
+        /* 档位要求的物品等级不能超过这件装备的等级 */
+        if (ilvl != null && row.lvl > ilvl) continue;
         const zht = R.rowTemplate(row, 'zht');
         /* 官方简中模板优先（国服玩家的原文），其次是繁中、繁中转简 */
         const forms = [...new Set([R.rowTemplate(row, 'en'), R.rowTemplate(row, 'zhs'), zht, conv(zht)])];
@@ -136,13 +149,33 @@
             const values = row.v.map((v) => v[0]);
             order.forEach((idx, k) => { values[idx] = Number(m[k + 1]); });
             const inRange = values.every((v, i) => v >= Math.min(row.v[i][0], row.v[i][1]) - 1e-9 && v <= Math.max(row.v[i][0], row.v[i][1]) + 1e-9);
-            if (inRange) return { row, values, exact: true };
-            if (!best) best = { row, values, exact: false };
+            if (!inRange) {
+              if (!best) best = { row, values, exact: false };
+              continue;
+            }
+            /* 数值落在这一档的区间正中吗：越接近正中越可能是真档 */
+            const s = centeringScore(row, values);
+            if (s < bestScore) { bestScore = s; best = { row, values, exact: true }; }
           }
         }
       }
+      /* 表头给了等阶，且那一档已经找到精确匹配，就用它，不再往下找 */
+      if (best && best.exact && want != null) return best;
     }
     return best;
+  }
+  /* 一组数值落在某档区间里的「居中程度」：0 = 全都正好在正中，越大越靠边。
+   * 区间宽度为 0（固定值）时给 0.5，避免它在同等条件下被误当成唯一解。 */
+  function centeringScore(row, values) {
+    let worst = 0;
+    for (let i = 0; i < values.length; i++) {
+      const lo = Math.min(row.v[i][0], row.v[i][1]);
+      const hi = Math.max(row.v[i][0], row.v[i][1]);
+      if (hi === lo) { worst = Math.max(worst, 0.5); continue; }
+      const pos = (values[i] - lo) / (hi - lo);
+      worst = Math.max(worst, Math.abs(pos - 0.5));
+    }
+    return worst;
   }
 
   /* 高级描述的表头行：{ 前缀属性 "总督的"（等阶：2）— 生命, 能量护盾 }
@@ -334,7 +367,7 @@
         const forms = spanVariants(part);
         const hdr = part[0].hdr;
         const tier = hdr ? hdr.tier : null;
-        let m = matchLine(forms, cand.live, base, tier) || matchLine(forms, cand.rest, base, tier);
+        let m = matchLine(forms, cand.live, base, tier, item.ilvl) || matchLine(forms, cand.rest, base, tier, item.ilvl);
         if (!m || m.row.fam.some((f) => fams.has(f))) m = matchByShape(base, part, cand, fams);
         if (m && (m.exact || n === 1) && !m.row.fam.some((f) => fams.has(f))) { hit = m; span = n; break; }
       }

@@ -769,41 +769,176 @@
     return null;
   }
 
-  /* ------------------------------------------------------------------ 价格（单位：崇高石；默认值是大概行情，只影响「哪条路更省」，界面里可以改） */
+  /* ------------------------------------------------------------------ 价格（单位：崇高石；默认值是大概行情，只影响「哪条路更省」，界面里可以改）
+   * 这张表是按市场当前挂牌价刷出来的（工具：node tools/fetch-prices.mjs --write-rules）。
+   * 通货和精华来自 poe.ninja 的「货币兑换」订单簿；预兆和骨头官方交易站限流严，
+   * 抓不到时按原估算 × 通货涨跌系数折算（PRICE_SNAPSHOT.estimated 是这些项的个数）。 */
+  const PRICE_SNAPSHOT = { league: "Forbidden Rites", fetchedAt: "2026-11-17T15:29:59.137Z", exPerDivine: 521.3, estimated: 28 };
   const DEFAULT_PRICES = {
-    transmute: 0.05, transmute_greater: 0.3, transmute_perfect: 2,
-    augment: 0.05, augment_greater: 0.3, augment_perfect: 2,
-    regal: 0.3, regal_greater: 2, regal_perfect: 12,
-    exalt: 1, exalt_greater: 6, exalt_perfect: 40,
-    chaos: 3, chaos_greater: 12, chaos_perfect: 60,
-    alchemy: 0.3, annul: 25, divine: 120, vaal: 2, fracture: 400, artificer: 0.5,
-    whetstone: 0.1, scrap: 0.1, etcher: 0.2,
-    bone_gnawed: 2, bone_preserved: 10, bone_ancient: 60, reveal: 0,
-    omen_sinistral_exalt: 60, omen_dextral_exalt: 60, omen_greater_exalt: 90, omen_homogenising_exalt: 400,
-    omen_sinistral_coronation: 60, omen_dextral_coronation: 60, omen_homogenising_coronation: 300,
-    omen_whittling: 250, omen_sinistral_erasure: 120, omen_dextral_erasure: 120,
-    omen_sinistral_annulment: 150, omen_dextral_annulment: 150, omen_greater_annulment: 200, omen_light: 300,
-    omen_sinistral_alchemy: 10, omen_dextral_alchemy: 10,
-    omen_sinistral_crystallisation: 80, omen_dextral_crystallisation: 80,
-    omen_sinistral_necromancy: 60, omen_dextral_necromancy: 60,
-    omen_the_sovereign: 40, omen_the_liege: 40, omen_the_blackblooded: 40,
-    omen_abyssal_echoes: 300, omen_corruption: 30,
-    essenceTier: [0.5, 1.5, 6, 40, 60],   // 次级 / 普通 / 高阶 / 完美 / 腐化
-    base: 0,
+    transmute: 0.604,
+    transmute_greater: 0.061,
+    transmute_perfect: 31.924,
+    augment: 1.14,
+    augment_greater: 1.373,
+    augment_perfect: 163.845,
+    regal: 1.584,
+    regal_greater: 28.228,
+    regal_perfect: 29.641,
+    exalt: 1,
+    exalt_greater: 26.711,
+    exalt_perfect: 1391.871,
+    chaos: 50.045,
+    chaos_greater: 145.182,
+    chaos_perfect: 5176.509,
+    alchemy: 5.087,
+    annul: 188.137,
+    divine: 521.3,
+    vaal: 8.31,
+    fracture: 4550.949,
+    artificer: 21.879,
+    whetstone: 6.527,
+    scrap: 9.034,
+    etcher: 14.591,
+    omen_sinistral_exalt: 786,
+    omen_dextral_exalt: 786,
+    omen_greater_exalt: 1180,
+    omen_homogenising_exalt: 5243,
+    omen_sinistral_coronation: 786,
+    omen_dextral_coronation: 786,
+    omen_homogenising_coronation: 3932,
+    omen_whittling: 3277,
+    omen_sinistral_erasure: 1573,
+    omen_dextral_erasure: 1573,
+    omen_sinistral_annulment: 1966,
+    omen_dextral_annulment: 1966,
+    omen_greater_annulment: 2621,
+    omen_light: 3932,
+    omen_sinistral_alchemy: 131,
+    omen_dextral_alchemy: 131,
+    omen_sinistral_crystallisation: 1049,
+    omen_dextral_crystallisation: 1049,
+    omen_sinistral_necromancy: 786,
+    omen_dextral_necromancy: 786,
+    omen_the_sovereign: 524,
+    omen_the_liege: 524,
+    omen_the_blackblooded: 524,
+    omen_abyssal_echoes: 3932,
+    omen_corruption: 393,
+    bone_gnawed: 26,
+    bone_preserved: 131,
+    bone_ancient: 786,
+    lesser_essence_of_enhancement: 8.497,
+    lesser_essence_of_abrasion: 912.275,
+    lesser_essence_of_ice: 9.999,
+    lesser_essence_of_electricity: 400.358,
+    lesser_essence_of_sorcery: 462.914,
+    lesser_essence_of_insulation: 8.998,
+    lesser_essence_of_command: 4,
+    essence_of_the_body: 500.448,
+    essence_of_abrasion: 2085.2,
+    essence_of_flames: 100.507,
+    essence_of_ice: 1,
+    essence_of_electricity: 4,
+    essence_of_sorcery: 250.224,
+    essence_of_grounding: 399.993,
+    essence_of_opulence: 781.95,
+    essence_of_hysteria: 508.424,
+    essence_of_horror: 698.542,
+    essence_of_insanity: 8.721,
+    essence_of_the_abyss: 185.635,
+    essence_of_the_breach: 152.167,
+    greater_essence_of_the_body: 8.341,
+    greater_essence_of_enhancement: 13.032,
+    greater_essence_of_abrasion: 14.675,
+    greater_essence_of_flames: 0.866,
+    greater_essence_of_electricity: 3,
+    greater_essence_of_ruin: 47.798,
+    greater_essence_of_battle: 0.6,
+    greater_essence_of_sorcery: 4,
+    greater_essence_of_haste: 10.228,
+    greater_essence_of_the_infinite: 3,
+    greater_essence_of_seeking: 9.331,
+    greater_essence_of_insulation: 2.285,
+    greater_essence_of_thawing: 6.824,
+    greater_essence_of_grounding: 16.598,
+    greater_essence_of_alacrity: 8.622,
+    greater_essence_of_opulence: 57.916,
+    greater_essence_of_command: 21.79,
+    perfect_essence_of_the_body: 104.26,
+    perfect_essence_of_the_mind: 34.244,
+    perfect_essence_of_enhancement: 112.601,
+    perfect_essence_of_abrasion: 104.26,
+    perfect_essence_of_flames: 26.492,
+    perfect_essence_of_ice: 50.045,
+    perfect_essence_of_ruin: 35,
+    perfect_essence_of_battle: 11.343,
+    perfect_essence_of_sorcery: 34.296,
+    perfect_essence_of_haste: 20.961,
+    perfect_essence_of_the_infinite: 113.174,
+    perfect_essence_of_seeking: 37.497,
+    perfect_essence_of_insulation: 5.5,
+    perfect_essence_of_thawing: 8.002,
+    perfect_essence_of_grounding: 173.749,
+    perfect_essence_of_alacrity: 72.409,
+    perfect_essence_of_opulence: 112.809,
+    perfect_essence_of_command: 104.26,
+    essenceTier: [9.999, 250.224, 250.224, 250.224],
   };
   /* 求解器不会建议、也不会用来计价的做法（见 ARCHITECTURE「不在求解范围内」）。
    * 改价格不会影响任何建议，所以设置里不列这些，也不进求解器的缓存键。 */
   const NOT_IN_SOLVER = { divine: true, vaal: true, fracture: true, artificer: true, whetstone: true, scrap: true, etcher: true };
 
+  /* 取价的唯一入口。三个坑在这里一次堵死：
+   *   · NaN 是 falsy，`p[k] || 0` 会把它变成 0（白送）
+   *   · 玩家手改的 0 价同样是 falsy，也会变成 0
+   *   · 线上行情某一档抓不到时给的是 null，null 参与加法等于加 0
+   * 0 价会让求解器白送通货（AGENTS.md 第 7 条），负数 / NaN 会让期望花费变成负数直接显示给玩家。
+   * 所以这里只认「有限且大于 0」的价格；拿不到就回落到内置默认表，再拿不到返回一个很大的有限值——
+   * 贵到求解器绝不会选它，而不是便宜到白送。
+   *
+   * 但「不花钱」和「没查到价」是两回事，得分开：
+   * 灵魂之井揭露（reveal）本来就不消耗通货，它是免费的。
+   * 以前它靠「价格表里没这一项 → 取价得 0」歪打正着地免费；现在取价有兜底了，
+   * 就必须在这里显式声明它是免费的，否则会变成 1e9 —— 求解器就再也不建议揭露了。 */
+  const NO_PRICE = 1e9;
+  /* 不消耗通货的操作：成本恒为 0。 */
+  const FREE_COST = { reveal: true };
+  function priceOf(p, key) {
+    if (FREE_COST[key]) return 0;
+    const v = p[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+    const d = DEFAULT_PRICES[key];
+    if (typeof d === 'number' && Number.isFinite(d) && d > 0) return d;
+    return NO_PRICE;
+  }
+  /* 精华：先按 id 定价（同一档里价格能差几十倍），再退回同档兜底价。
+   * 兜底价本身也可能是 null —— 那就再退一档有值的，或者直接 NO_PRICE。 */
+  function essencePriceOf(p, essId, tier) {
+    const v = p[essId];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v;
+    const tierArr = p.essenceTier;
+    if (Array.isArray(tierArr)) {
+      const idx = Math.min(tierArr.length - 1, Math.max(0, (tier || 1) - 1));
+      const t = tierArr[idx];
+      if (typeof t === 'number' && Number.isFinite(t) && t > 0) return t;
+    }
+    const def = DEFAULT_PRICES.essenceTier;
+    if (Array.isArray(def)) {
+      const idx = Math.min(def.length - 1, Math.max(0, (tier || 1) - 1));
+      const t = def[idx];
+      if (typeof t === 'number' && Number.isFinite(t) && t > 0) return t;
+    }
+    return NO_PRICE;
+  }
   function cost(action, prices) {
     const p = Object.assign({}, DEFAULT_PRICES, prices || {});
     let c = 0;
     if (action.essence) {
       const ess = essenceById.get(action.essence);
-      c += p[action.essence] != null ? p[action.essence] : p.essenceTier[Math.min(4, (ess ? ess.tier : 1) - 1)];
-    } else if (action.rune) c += p[action.rune] || 0;
-    else c += p[action.cur] || 0;
-    for (const id of action.omens || []) c += p[id] || 0;
+      c += essencePriceOf(p, action.essence, ess ? ess.tier : 1);
+    } else if (action.rune) c += priceOf(p, action.rune);
+    else c += priceOf(p, action.cur);
+    for (const id of action.omens || []) c += priceOf(p, id);
     return c;
   }
   function actionName(action, item) {
@@ -817,7 +952,7 @@
   }
 
   const api = {
-    ESTIMATES, CUR, OMEN, DEFAULT_PRICES, NOT_IN_SOLVER,
+    ESTIMATES, CUR, OMEN, DEFAULT_PRICES, NOT_IN_SOLVER, PRICE_SNAPSHOT,
     data: { bases: DB.bases, rows: DM.rows, essences: DX.essences, augments: DX.augments, omens: DX.omens, meta: DX.meta },
     base: (id) => baseById.get(id), row: (id) => rowById.get(id), essence: (id) => essenceById.get(id), augment: (id) => augmentById.get(id),
     weight, setWeights, eligibleRows, ladder, tierOf, typesFor, socketCap,

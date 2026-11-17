@@ -7,7 +7,9 @@
   'use strict';
 
   const R = window.CraftRules;
+  const PR = window.CraftPrices;
   const S = window.CraftSolver;
+  const V = window.CraftValuation;
   const P = window.CraftItemText;
   const T2S = window.CraftT2S || ((s) => s);
   const $ = (id) => document.getElementById(id);
@@ -40,7 +42,7 @@
   const defaults = {
     step: 'item', item: null, targets: [], history: [], log: [],
     basePrice: 1, prices: {}, lang: 'zhs', theme: 'ink', sideModel: 'pooled', off: {},
-    slot: 'helmet', wcls: 'sword1', q: '', ilvl: 82, tq: '',
+    slot: 'helmet', wcls: 'sword1', q: '', ilvl: 82, tq: '', priceApi: '',
   };
   let state = Object.assign({}, defaults);
   try { Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* 存档坏了就用默认值 */ }
@@ -76,6 +78,7 @@
     if (['pooled', 'sideFirst'].indexOf(s.sideModel) === -1) s.sideModel = 'pooled';
     if (typeof s.q !== 'string') s.q = '';
     if (typeof s.tq !== 'string') s.tq = '';
+    if (typeof s.priceApi !== 'string') s.priceApi = '';
     return s;
   }
   state = repairState(state);
@@ -94,7 +97,9 @@
   }
   window.addEventListener('error', (e) => fatal(e.error || e.message));
   window.addEventListener('unhandledrejection', (e) => fatal(e.reason));
-  const ui = { plan: null, planKey: '', busy: false, report: null, paste: false, pasteText: '', edit: false, sens: null, sensBusy: false, more: 60, folds: {} };
+  const ui = { plan: null, planKey: '', busy: false, report: null, paste: false, pasteText: '', edit: false, sens: null, sensBusy: false, more: 60, folds: {},
+    live: { prices: {}, info: null, error: null, busy: false },
+    val: { compare: null, busy: false, progress: null } };
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* 隐私模式下存不了也不影响使用 */ }
   }
@@ -196,7 +201,9 @@
         }
         var out = m.kind === 'sensitivity'
           ? self.CraftSolver.sensitivity(m.item, m.targets, opts)
-          : self.CraftSolver.plan(m.item, m.targets, opts);
+          : m.kind === 'compare'
+            ? self.CraftValuation.compare(m.item, m.targets, opts)
+            : self.CraftSolver.plan(m.item, m.targets, opts);
         self.postMessage({ id: m.id, ok: true, result: out });
       } catch (err) {
         self.postMessage({ id: m.id, ok: false, error: String((err && err.message) || err) });
@@ -213,7 +220,7 @@
       if (!workerUrl) {
         const src = window.CraftSource;
         const code = ['CRAFT_BASES', 'CRAFT_MODS', 'CRAFT_MISC', 'CRAFT_ZH', 'CRAFT_ZHS'].map((k) => 'self.' + k + '=' + JSON.stringify(window[k]) + ';')
-          .concat(['(' + src.rules.toString() + ')(self);', '(' + src.solver.toString() + ')(self);', '(' + workerMain.toString() + ')();']).join('\n');
+          .concat(['(' + src.rules.toString() + ')(self);', '(' + src.solver.toString() + ')(self);', '(' + src.valuation.toString() + ')(self);', '(' + workerMain.toString() + ')();']).join('\n');
         workerUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
       }
       return new Worker(workerUrl);
@@ -223,7 +230,12 @@
     return new Promise((res) => setTimeout(() => {
       document.documentElement.dataset.solver = 'main';
       R.setSideModel(msg.sideModel);
-      try { res(msg.kind === 'sensitivity' ? S.sensitivity(msg.item, msg.targets, msg.opts) : S.plan(msg.item, msg.targets, msg.opts)); } catch (err) { res(null); }
+      try {
+        res(msg.kind === 'sensitivity' ? S.sensitivity(msg.item, msg.targets, msg.opts) : msg.kind === 'compare' ? V.compare(msg.item, msg.targets, msg.opts) : S.plan(msg.item, msg.targets, msg.opts));
+      } catch (err) {
+        /* 算崩了 ≠ 做不出来。带上原因回去，界面要分开显示（见 stepCraft 的 error 分支）。 */
+        res({ status: 'error', error: String((err && err.message) || err || '未知错误') });
+      }
     }, 30));
   }
   /* 一条通道 = 一个后台线程。同一时间只算一个；排队的只留最新一个（玩家连点几下时，中间的不必算）。
@@ -251,7 +263,12 @@
         }
         inflight = null;
         document.documentElement.dataset.solver = 'worker';
-        if (job && job.msg.id === e.data.id) job.res(e.data.ok ? e.data.result : null);
+        /* worker 报错了（ok:false）时把原因带回来，别只丢一个 null —— 
+           界面的「技术细节」要显示真正的原因，否则玩家和开发者都看不到发生了什么。 */
+        if (job && job.msg.id === e.data.id) {
+          if (e.data.ok) job.res(e.data.result);
+          else job.res({ status: 'error', error: e.data.error || '计算没有返回结果' });
+        }
         pump();
       };
       worker.onerror = () => {                 // 后台线程起不来：之后都在主线程算
@@ -286,6 +303,8 @@
   }
   const planLane = lane();
   const sensLane = lane();
+  /* 底子估值走自己的线程：它要连着解好几个底子，别占住「下一步怎么做」那条 */
+  const valLane = lane();
   function solverOpts() {
     const allow = {};
     for (const id of Object.keys(R.CUR)) {
@@ -296,9 +315,10 @@
     if (state.off.annul) allow.annul = false;
     if (state.off.essence) allow.essence = false;
     if (state.off.omens) for (const id of Object.keys(R.OMEN)) allow[id] = false;
-    /* 求解器用不到的通货价格不进 opts：改了也不会影响建议，没有必要触发重算 */
-    const prices = {};
-    for (const id of Object.keys(state.prices)) if (!R.NOT_IN_SOLVER[id]) prices[id] = state.prices[id];
+    /* 价格分三层：内置默认 < 线上行情 < 玩家手改。
+     * 只留求解器真正会用的——求解器不会建议的通货（神圣石 / 瓦尔 / 破裂石 / 巧匠石 / 品质类）
+     * 改了也不影响建议，带着它们只会白白让缓存失效、触发重算。 */
+    const prices = PR ? PR.solverPrices(ui.live.prices, state.prices) : Object.assign({}, state.prices);
     return { basePrice: Number(state.basePrice) || 0, prices, allow };
   }
   function replan() {
@@ -313,7 +333,9 @@
     ui.busy = true;
     planLane.run('plan', state.item, state.targets, solverOpts()).then((plan) => {
       if (ui.planKey !== key || plan === STALE) return;
-      ui.plan = plan || { status: 'error' };
+      /* 算崩了要单独标出来：worker 返回 null 说明抛异常了。
+       * 这种情况和「目标做不出来」是完全不同的两回事，界面要分开显示。 */
+      ui.plan = plan || { status: 'error', error: '计算没有返回结果' };
       ui.busy = false;
       render();
     });
@@ -399,6 +421,88 @@
           + '<span class="goal-name">' + esc(t.name) + '</span><span class="tag ' + (ev.hits[i] ? 'hit' : '') + '">' + (ev.hits[i] ? '已有' : t.tier ? 'T' + t.tier + ' 以上' : '指定') + '</span></div>')).join('')).join('') + '</div>';
     }
     $('side').innerHTML = html;
+  }
+
+  /* ------------------------------------------------------------------ 底子估值 */
+  /* 玩家拿到一件掉落之后最常问两件事：这底子有没有前途？同级别里算便宜还是贵？
+   * 第一件是纯计算（天花板画像），第二件是拿同一组目标去各个底子上比期望花费。 */
+  const valTypeName = (t) => {
+    const row = t.bestRow ? R.row(t.bestRow) : null;
+    return row ? shortName(rowText(row)) : t.type;
+  };
+  /* 花费用崇高石；超过一个神圣石的顺便给个神圣石当量，玩家更好掂量 */
+  function fmtCost(n) {
+    if (!Number.isFinite(n)) return '—';
+    const prices = PR ? PR.merge(ui.live.prices, state.prices) : R.DEFAULT_PRICES;
+    const div = prices.divine;
+    if (div && n >= div) return fmt(n) + ' 崇高石（≈' + (n / div).toFixed(1) + ' 神圣石）';
+    return fmt(n) + ' 崇高石';
+  }
+  function valuationPanel() {
+    if (!state.item || !V) return '';
+    const base = R.baseOf(state.item);
+    if (!base) return '';
+    const prof = V.profile(base, { ilvl: state.item.ilvl });
+    if (!prof) return '';
+    const stat = (label, value, hint) => '<div><div class="small faint">' + esc(label) + '</div><div><b>' + esc(value) + '</b>'
+      + (hint ? ' <span class="small faint">' + esc(hint) + '</span>' : '') + '</div></div>';
+    const t1names = prof.ceiling.t1.map(valTypeName);
+    const html = '<div class="panel stack" data-val="profile">'
+      + '<div class="spread"><h2 class="h2" style="margin:0">这个底子怎么样</h2><span class="small faint">' + esc(baseName(base)) + ' · 需求 ' + (base.req.lvl || 1) + ' 级</span></div>'
+      + '<div class="row" style="gap:20px;flex-wrap:wrap">'
+      + stat('能出的词缀类型', prof.breadth + ' 种', '前缀 ' + prof.sides.p.n + ' · 后缀 ' + prof.sides.s.n)
+      + stat('能出 T1 的类型', prof.ceiling.t1Count + ' 种', '前缀 ' + prof.ceiling.t1Prefix + ' · 后缀 ' + prof.ceiling.t1Suffix)
+      + stat('两侧都能出的', prof.both.length + ' 种', '组合自由度')
+      + stat('深渊专属', prof.abyss.n + ' 条', prof.abyss.sides.length === 1 ? '只在' + sideName(prof.abyss.sides[0]) : (prof.abyss.sides.length ? '两侧都有' : '没有'))
+      + '</div>'
+      + (prof.notes.length ? '<div class="stack" style="gap:4px">' + prof.notes.map((n) => '<p class="small muted" style="margin:0">· ' + esc(n) + '</p>').join('') + '</div>' : '')
+      + (t1names.length ? '<details class="fold"><summary>能出 T1 的词缀（' + t1names.length + ' 种）</summary><div class="stack" style="gap:4px;margin:10px 0">'
+        + t1names.map((n) => '<p class="small muted" style="margin:0">· ' + esc(n) + '</p>').join('') + '</div></details>' : '')
+      + '<div class="row"><button class="btn" data-act="val-compare" type="button"' + (ui.val.busy ? ' disabled' : '') + '>'
+      + (ui.val.busy ? '正在比…' : '和同级别的其它底子比一比') + '</button>'
+      + '<span class="small faint">' + (ui.val.compare ? '下面是结果' : '拿同一组目标去各个底子上试一次，比期望花费') + '</span></div>'
+      + '</div>';
+    return html + (ui.val.compare ? valComparePanel(ui.val.compare) : '');
+  }
+  function valComparePanel(out) {
+    if (!out) return '';
+    if (out.note) return '<div class="panel stack"><p class="small muted">' + esc(out.note) + '</p></div>';
+    const base = R.base(out.base);
+    const refs = out.refs.map((r) => {
+      const row = r.row ? R.row(r.row) : null;
+      return (row ? shortName(rowText(row)) : r.type) + ' T' + r.tier;
+    });
+    const rows = out.rows.map((r) => {
+      const b = R.base(r.base);
+      const mark = r.self ? '★ ' : '';
+      const cost = r.status === 'ok' ? fmtCost(r.mean) : (r.status === 'impossible' ? '做不出来' : r.status);
+      return '<div class="spread small" style="padding:6px 0;border-bottom:1px solid var(--line)">'
+        + '<span>' + mark + esc(b ? baseName(b) : r.name) + (r.self ? '（就是它）' : '') + '</span>'
+        + '<span class="faint">T1 ' + r.t1 + ' 种</span>'
+        + '<span>' + esc(cost) + (r.group ? ' <span class="faint">第 ' + r.group + ' 档</span>' : '') + '</span>'
+        + '</div>';
+    });
+    const self = out.rows.find((r) => r.self);
+    const first = out.rows.find((r) => r.status === 'ok');
+    let verdict;
+    if (!self) verdict = '';
+    else if (self.status !== 'ok') verdict = '这个底子做不出参考目标里的一部分——换别的底子更省。';
+    else if (out.groups <= 1) verdict = '这几个底子做起来差不多（差别在估算误差以内），没有明显更值的。';
+    else if (self.group === 1 && self === first) verdict = '这个底子在同级别里最省：同样的目标，在它上面花得最少。';
+    else if (self.group === 1) verdict = '这个底子在同级别里属于便宜的那一档（和最省的那个差不了多少）。';
+    else verdict = '这个底子在同级别里排第 ' + self.group + ' 档（共 ' + out.groups + ' 档）：同样的目标，别的底子更省。';
+    const auto = !state.targets.length;
+    return '<div class="panel stack" data-val="compare">'
+      + '<h2 class="h2" style="margin:0">同级别对照</h2>'
+      + '<p class="small muted">用同一组目标（' + esc(refs.join(' + ')) + '）去这些底子上各试一次，比的是期望花费：'
+      + '花得越少说明在这个底子上做越省，也就是底子本身更值钱。'
+      + (auto ? '（你还没选目标，这组是自动挑的「这个部位普遍能出的顶档词缀」；'
+        + '先在上面挑几条你真正想要的词缀，再点一次会比得更有意义。）' : '（用的是你在第 2 步选的目标。）') + '</p>'
+      + rows.join('')
+      + (verdict ? '<p class="small muted"><b>' + esc(verdict) + '</b></p>' : '')
+      + '<p class="small faint">花费是估算值（词缀的随机权重、抽词缀的方式游戏没公开），'
+      + '同一档里的底子基本分不出高低。</p>'
+      + '</div>';
   }
 
   /* ------------------------------------------------------------------ 第 1 步：装备 */
@@ -506,6 +610,7 @@
     return '<div class="stack"><div class="eyebrow">第 2 步</div><h1 class="title">你想要哪些词缀？</h1>'
       + '<p class="lede">挑 2–3 条最看重的就够了。T1 是这个底子能出的最高档，档位要求越高、条数越多，花费涨得越快。'
       + '一件装备的' + sideTag('p') + '和' + sideTag('s') + '各有 ' + cap.p + ' / ' + cap.s + ' 个位置，互不占用。</p></div>'
+      + valuationPanel()
       + '<div class="panel">' + (state.targets.length ? '<div class="spread panel-head"><span class="small muted">已选 ' + state.targets.length + ' 条</span>'
         + '<button class="ghost" data-act="clear-targets" type="button">清空已选</button></div>' : '') + group('p') + group('s') + '</div>'
       + '<div class="stack"><div class="spread"><h2 class="h2">这个底子能出的词缀</h2><input class="field" style="max-width:240px" data-bind="tq" aria-label="搜索词缀" value="' + esc(state.tq) + '" placeholder="搜索，如 生命 / 抗性"></div>'
@@ -695,7 +800,18 @@
         + manualPanel();
     }
     if (plan.status === 'corrupted') return head + '<div class="next"><div class="next-title">这件装备<em>已经腐化</em></div><p class="next-how">腐化后不能再用通货改词缀，只能继续插符文。要做新目标得换一件。</p><div class="row"><button class="btn" data-act="new-item" type="button">换一件</button></div></div>';
-    if (plan.status === 'impossible' || plan.status === 'error') {
+    /* 算崩了 ≠ 做不出来。
+     * 「做不出来」是玩家目标选得不合适，该去改目标；
+     * 「算崩了」是我们自己的问题，改目标没用，要再算一次。
+     * 以前这两种共用一张卡片，玩家会以为是自己选错了目标，反复改目标却怎么都不对。 */
+    if (plan.status === 'error') {
+      const detail = plan.error ? '<details class="fold"><summary>技术细节</summary><div class="small faint" style="margin-top:8px">' + esc(String(plan.error)) + '</div></details>' : '';
+      return head + '<div class="next"><div class="next-title">算的时候<em>出错了</em></div>'
+        + '<p class="next-how">不是你的目标有问题，是这边算炸了。点「再算一次」重试；一直不行的话，把目标条数减一两条再试。</p>'
+        + '<div class="row"><button class="btn primary" data-act="replan-now" type="button">再算一次</button>'
+        + '<button class="btn" data-act="go" data-v="targets" type="button">回去调整目标</button></div>' + detail + '</div>';
+    }
+    if (plan.status === 'impossible') {
       const probs = (plan.problems || [{ text: '计算出了问题，请换个目标试试。' }]).map((p) => '<div class="note bad">' + esc(p.text)
         + (p.kind === 'ilvl' ? ' <button class="link" data-act="set-ilvl" data-v="' + p.need + '" type="button">把物品等级改成 ' + p.need + '</button>' : '') + '</div>').join('');
       return head + '<div class="next"><div class="next-title">按现在的目标<em>做不出来</em></div>' + probs
@@ -951,10 +1067,47 @@
     render();
   }
 
+  /* ------------------------------------------------------------------ 价格（线上行情） */
+  /* 行情后端是可选的 Cloudflare Worker（backend/）。没配或者拉不到，就安静地用内置默认表。 */
+  async function refreshPrices(url) {
+    const api = url != null ? url : state.priceApi;
+    if (!api || !PR) return;
+    ui.live.busy = true;
+    const cfg = await PR.fetchConfig(api, {
+      onError: (e) => { ui.live.error = String((e && e.message) || e); },
+    });
+    ui.live.busy = false;
+    if (!cfg) { render(); return; }
+    ui.live.prices = PR.flatten(cfg);
+    ui.live.info = { league: cfg.league, fetchedAt: cfg.fetchedAt, sources: cfg.sources };
+    ui.live.error = null;
+    ui.planKey = '';        // 价格变了，之前那份解不算数
+    replan();
+    render();
+  }
+  function priceSourceText() {
+    const info = ui.live.info;
+    if (info) {
+      const src = info.sources ? Array.from(new Set(Object.values(info.sources))).join(' + ') : '行情';
+      const t = info.fetchedAt ? new Date(info.fetchedAt).toLocaleString('zh-CN') : '';
+      return '线上行情：' + (info.league || '?') + ' · ' + src + (t ? ' · ' + t : '');
+    }
+    if (ui.live.error) return '线上行情拉取失败（' + ui.live.error + '），现在用的是内置默认表';
+    const snap = R.PRICE_SNAPSHOT || {};
+    return '内置默认表' + (snap.fetchedAt ? '（' + new Date(snap.fetchedAt).toLocaleDateString('zh-CN') + ' 的快照）' : '')
+      + '，可以在下面按你所在赛季的行情改';
+  }
+  /* 玩家看到的价格：手改 > 线上 > 内置默认 */
+  function priceOf(id) {
+    if (state.prices[id] != null) return state.prices[id];
+    if (ui.live.prices[id] != null) return ui.live.prices[id];
+    return R.DEFAULT_PRICES[id];
+  }
+
   /* ------------------------------------------------------------------ 设置 */
   function renderSheet() {
     const off = (k, label) => '<label class="row"><input type="checkbox" data-off="' + k + '" ' + (state.off[k] ? 'checked' : '') + '> ' + label + '</label>';
-    const priceRow = (id, name) => '<label class="spread small"><span>' + esc(name) + '</span><input class="field num" type="number" min="0" step="0.1" data-price="' + id + '" value="' + (state.prices[id] != null ? state.prices[id] : R.DEFAULT_PRICES[id]) + '"></label>';
+    const priceRow = (id, name) => '<label class="spread small"><span>' + esc(name) + '</span><input class="field num" type="number" min="0" step="0.1" data-price="' + id + '" value="' + (priceOf(id) != null ? priceOf(id) : '') + '"></label>';
     $('sheet').innerHTML = '<div class="spread"><h2 class="title" style="font-size:1.3rem">设置</h2><button class="ghost" data-act="close-settings" type="button">关闭</button></div>'
       + '<div class="stack"><h3 class="h2">外观</h3><div class="swatches">' + THEMES.map(([id, n, bg, ac, md]) => '<button class="swatch ' + (state.theme === id ? 'on' : '') + '" data-act="theme" data-v="' + id + '" type="button">'
         + '<span class="swatch-chip" style="background:' + bg + '"><i style="background:' + ac + '"></i><i style="background:' + md + '"></i></span><span>' + n + '</span></button>').join('') + '</div></div>'
@@ -964,10 +1117,14 @@
       + '<div class="stack"><h3 class="h2">计算假设</h3><p class="small faint">游戏没有公开这些细节，结果都是估算：</p>'
       + Object.values(R.ESTIMATES).map((t) => '<p class="small muted">· ' + esc(t) + '</p>').join('')
       + '<div class="chips">' + [['pooled', '前后缀合并抽取'], ['sideFirst', '先各一半选侧']].map(([id, n]) => '<button class="chip ' + (state.sideModel === id ? 'on' : '') + '" data-act="side-model" data-v="' + id + '" type="button">' + n + '</button>').join('') + '</div></div>'
-      + '<details class="fold"><summary>价格（单位：崇高石）</summary><p class="small faint" style="margin:10px 0">默认值只是大概行情，只影响「哪条路更省」。按你所在赛季的实际价格改会更准。</p><div class="stack">'
+      + '<details class="fold"><summary>价格（单位：崇高石）</summary><p class="small faint" style="margin:10px 0">现在用的是：' + esc(priceSourceText()) + '</p>'
+      + '<label class="row small"><span>行情接口地址</span><input class="field" style="max-width:260px" data-bind="priceApi" value="' + esc(state.priceApi) + '" placeholder="https://…/api/poe2/config"></label>'
+      + '<div class="row"><button class="ghost" data-act="refresh-prices" type="button">' + (ui.live.busy ? '正在拉行情…' : '拉一次行情') + '</button></div>'
+      + '<p class="small faint" style="margin:0">填了行情接口就会用它给的实时价格；没填或者拉不到就用内置表。下面手改的价优先级最高。</p>'
+      + '<div class="stack">'
       + Object.keys(R.CUR).filter((id) => id !== 'reveal' && R.DEFAULT_PRICES[id] != null && !R.NOT_IN_SOLVER[id]).map((id) => priceRow(id, R.CUR[id].zh)).join('')
       + Object.keys(R.OMEN).map((id) => priceRow(id, locName(R.data.omens.find((o) => o.id === id), id))).join('')
-      + '<button class="ghost" data-act="reset-prices" type="button">恢复默认价格</button>'
+      + '<button class="ghost" data-act="reset-prices" type="button">清掉我手改的价格</button>'
       + '<p class="small faint" style="margin:0">求解器现在不会建议：神圣石 / 瓦尔宝珠 / 破裂石 / 巧匠石 / 品质通货，所以没列在这里——改它们也不会改变任何建议。</p>'
       + '</div></details>'
       + '<p class="small faint">数据：游戏版本 ' + esc(R.data.meta.gameVersion) + ' · ' + R.data.meta.counts.bases + ' 个底子 · ' + R.data.meta.counts.liveRows + ' 条可掉落词缀档位'
@@ -1182,10 +1339,34 @@
     },
     'open-settings': () => openSheet(true),
     'close-settings': () => openSheet(false),
+    /* 算崩了之后「再算一次」：丢掉上一次的计划键，强制重新算一遍 */
+    'replan-now': () => { ui.planKey = ''; ui.plan = null; ui.busy = false; replan(); render(); },
     theme: (v) => { state.theme = v; save(); render(); renderSheet(); },
     lang: (v) => { state.lang = v; state.targets.forEach((t) => { const rows = R.ladder(R.baseOf(state.item), t.type, t.pool); if (rows.length) t.name = shortName(rowText(rows[0])); }); save(); ui.planKey = ''; replan(); render(); renderSheet(); },
     'side-model': (v) => { state.sideModel = v; save(); replan(); render(); renderSheet(); },
     'reset-prices': () => { state.prices = {}; save(); replan(); render(); renderSheet(); },
+    'refresh-prices': () => { refreshPrices(); },
+    /* 和同级别的其它底子比一比：拿同一组目标去各个底子上试一次，比期望花费 */
+    'val-compare': () => {
+      if (!state.item || ui.val.busy) return;
+      ui.val.busy = true;
+      ui.val.progress = null;
+      ui.val.compare = null;
+      render();
+      const opts = solverOpts();
+      opts.count = 6;
+      opts.refCount = 3;
+      opts.runs = 250;
+      valLane.run('compare', state.item, state.targets.length ? state.targets : null, opts, (p) => {
+        ui.val.progress = p;
+        render();
+      }).then((out) => {
+        ui.val.busy = false;
+        ui.val.progress = null;
+        if (out) ui.val.compare = out;
+        render();
+      });
+    },
   };
   document.addEventListener('click', (e) => {
     if (e.target.id === 'sheetBackdrop') return openSheet(false);
@@ -1218,6 +1399,7 @@
       else render();
     }
     else if (el.dataset.bind === 'basePrice') { state.basePrice = Math.max(0, Number(el.value) || 0); save(); replan(); render(); }
+    else if (el.dataset.bind === 'priceApi') { state.priceApi = String(el.value || '').trim(); save(); }
     else if (el.dataset.off) { state.off[el.dataset.off] = el.checked; save(); replan(); render(); }
     else if (el.dataset.price) { state.prices[el.dataset.price] = Math.max(0, Number(el.value) || 0); save(); replan(); render(); }
   });
@@ -1235,6 +1417,8 @@
     if (state.step === 'craft') replan();
     render();
   } catch (e) { fatal(e); }
+  /* 有行情接口就拉一次。拉不到不影响使用，会安静地退回内置默认表。 */
+  if (state.priceApi) setTimeout(() => refreshPrices(), 300);
   /* 后台线程提前起好：拼脚本要把 1.5 MB 数据序列化一遍，放在空闲时做，免得第一次点「开始做装」时顿一下 */
   setTimeout(() => planLane.warm(), 600);
 })();

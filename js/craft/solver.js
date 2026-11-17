@@ -54,7 +54,9 @@
     });
     const model = {
       item, base, ilvl: item.ilvl, cap: [cap.p, cap.s], T, k: T.length,
-      prices: opts.prices || {}, basePrice: opts.basePrice == null ? (R.DEFAULT_PRICES.base || 0) : Number(opts.basePrice),
+      /* 底子价不能是负数或 NaN：负的底子价会让「换白底重来」这条路径的期望花费变成负数，
+       * 直接显示给玩家（实测能到 -1e10）。这里钳到 0 以上。 */
+      prices: opts.prices || {}, basePrice: Math.max(0, Number(opts.basePrice == null ? (R.DEFAULT_PRICES.base || 0) : opts.basePrice) || 0),
       allow: opts.allow || null, legacyOmens: !!opts.legacyOmens, empty,
       frac: [0, 0], pools: new Map(), revealCache: new Map(), addMemo: new Map(), problems: [],
     };
@@ -1348,9 +1350,20 @@
     /* 换底子是最优时的对照：这件上最省的做法要多少钱（action 留给界面翻译成文字） */
     const keepBest = restartFirst && top ? { action: top.act.action, name: R.actionName(top.act.action, item), cost: top.act.cost, total: top.total } : null;
     const pAttempt = sol.canRestart ? 1 - sol.X[G.freshId] : null;
+    const costObj = costOf(model, sol, opts.runs || 1500, i0, value);
+    /* 最后一道防线：期望花费必须是有限正数。
+     * 价格层已经有闸（rules.js 的 priceOf / prices.js 的 positive），但求解是线性的，
+     * 一旦有价格漏进来，期望值会变成负数或 NaN 直接显示给玩家（实测能到 -3.2e9）。
+     * 与其显示一个荒谬的数字，不如明确说「按现有价格算不出来」，并把原因告诉界面。 */
+    if (!Number.isFinite(costObj.mean) || costObj.mean < 0) {
+      return Object.assign(head, {
+        status: 'impossible',
+        problems: [{ kind: 'prob', text: '按现在的价格算不出一个可信的花费（价格表里可能有异常值）。去「设置 → 价格」检查一下价格。' }],
+      });
+    }
     return Object.assign(head, {
       status: 'ok',
-      cost: costOf(model, sol, opts.runs || 1500, i0, value),
+      cost: costObj,
       next: restartFirst ? { restart: true, name: '换一个底子重来', cost: model.basePrice, total: sol.exit } : pack(best),
       alternatives: options.filter((o) => o !== best).slice(0, 6).map(pack),
       route,
